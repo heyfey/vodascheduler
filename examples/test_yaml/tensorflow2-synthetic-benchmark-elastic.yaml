@@ -1,0 +1,39 @@
+apiVersion: kubeflow.org/v1
+kind: MPIJob
+metadata:
+  name: tensorflow2-synthetic-benchmark-elastic
+spec:
+  slotsPerWorker: 1
+  cleanPodPolicy: Running
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: heyfey/horovod:latest
+            name: mpi-launcher
+            command:
+            - horovodrun
+            args:
+            - -np
+            - "2"
+            - --min-np
+            - "1"
+            - --max-np
+            - "8"
+            - --host-discovery-script
+            - /etc/mpi/discover_hosts.sh
+            - python
+            - /examples/elastic/tensorflow2/tensorflow2_synthetic_benchmark_elastic.py
+            - --fp16-allreduce
+    Worker:
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - image: heyfey/horovod:latest
+            name: mpi-worker
+            resources:
+              limits:
+                nvidia.com/gpu: 1
