@@ -1,0 +1,57 @@
+apiVersion: kubeflow.org/v1
+kind: MPIJob
+metadata:
+  name: pytorch-mnist-elastic
+spec:
+  slotsPerWorker: 1
+  cleanPodPolicy: Running
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: heyfey/horovod:latest
+            name: mpi-launcher
+            command:
+            - horovodrun
+            args:
+            - -np
+            - "2"
+            - --min-np
+            - "1"
+            - --max-np
+            - "8"
+            - --host-discovery-script
+            - /etc/mpi/discover_hosts.sh
+            - python
+            - /celeste/celeste/examples/py/pytorch_mnist_elastic.py
+            # need to pre-download the dataset in k8s
+            - --data-dir
+            - "/celeste/celeste/examples/py/data"
+            - --epochs
+            - "300"
+            volumeMounts:
+              - name: nas
+                mountPath: /celeste
+          volumes:
+            - name: nas
+              persistentVolumeClaim:
+                claimName: nfs
+    Worker:
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - image: heyfey/horovod:latest
+            name: mpi-worker
+            resources:
+              limits:
+                nvidia.com/gpu: 1
+            volumeMounts:
+              - name: nas
+                mountPath: /celeste
+          volumes:
+            - name: nas
+              persistentVolumeClaim:
+                claimName: nfs
