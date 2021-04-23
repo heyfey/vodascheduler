@@ -28,20 +28,13 @@ spec:
             - --network-interface
             - "eth0"
             - python
-            - /celeste/celeste/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
+            - /celeste/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
             - --epochs 
             - "150"
             - --store-dir
-            - "/celeste/celeste/examples/py/tensorflow2"
+            - "/outputs"
             - --metrics-dir
-            - "/celeste/metrics"
-            volumeMounts:
-              - name: nas
-                mountPath: /celeste
-          volumes:
-            - name: nas
-              persistentVolumeClaim:
-                claimName: nfs
+            - "/metrics"
     Worker:
       replicas: 2
       template:
@@ -53,9 +46,24 @@ spec:
               limits:
                 nvidia.com/gpu: 1
             volumeMounts:
-              - name: nas
+              - name: repos
                 mountPath: /celeste
+              - name: outputs
+                mountPath: /outputs
+              - name: metrics
+                mountPath: /metrics
+              - name: keras-data
+                mountPath: /.keras
           volumes:
-            - name: nas
+            - name: repos
               persistentVolumeClaim:
-                claimName: nfs
+                claimName: celeste-pvc-repos
+            - name: outputs
+              persistentVolumeClaim:
+                claimName: celeste-pvc-outputs
+            - name: metrics
+              persistentVolumeClaim:
+                claimName: celeste-pvc-metrics
+            - name: keras-data
+              persistentVolumeClaim:
+                claimName: celeste-pvc-data-keras
