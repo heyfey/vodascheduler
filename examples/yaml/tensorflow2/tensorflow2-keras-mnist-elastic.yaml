@@ -13,15 +13,22 @@ spec:
           containers:
           - image: heyfey/horovod:latest
             name: mpi-launcher
+            env:
+              - name: JOB_NAME
+                value: "tensorflow2-keras-mnist-elastic"
+              - name: MIN_NP
+                value: "1"
+              - name: MAX_NP
+                value: "8"
             command:
             - horovodrun
             args:
             - -np
             - "1"
             - --min-np
-            - "1"
+            - "$(MIN_NP)"
             - --max-np
-            - "8"
+            - "$(MAX_NP)"
             - --host-discovery-script
             - /etc/mpi/discover_hosts.sh
             # '--network-interface' is required to start elastic training with only 1 worker.
@@ -29,6 +36,8 @@ spec:
             - "eth0"
             - python
             - /celeste/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
+            - --name
+            - "$(JOB_NAME)"
             - --epochs 
             - "150"
             - --store-dir
