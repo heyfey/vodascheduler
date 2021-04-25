@@ -21,8 +21,7 @@ from callbacks import MetricsCSVLogger, set_logger_params
 from argparse import ArgumentParser
 
 parser = ArgumentParser(description='Celeste tf.keras MNIST Example')
-parser.add_argument("--name"              , dest ="job_name", type=str, default='', help="name to recognize training job (default: file name)")
-parser.add_argument("--id"                , dest ="job_id", type=str, default='', help="unique identifer to recgnize training job")
+parser.add_argument("--name"              , dest ="job_name", type=str, default='', help="unique name to identify training job (default: file name)")
 parser.add_argument("--data-dir"          , dest ="d_dir", type=str, default='./', help="path to dataset")
 parser.add_argument("--store-dir"         , dest ="s_dir", type=str, default='./', help="path to outputs (checkpoint)")
 parser.add_argument("--metrics-dir"       , dest ="m_dir", type=str, default='./', help="path to metrics")
@@ -40,7 +39,6 @@ args = parser.parse_args()
 
 # set and print hyper-parameters
 job_name           = args.job_name
-job_id             = args.job_id
 dataset_dir        = args.d_dir
 store_dir          = args.s_dir
 metrics_dir        = args.m_dir
@@ -56,7 +54,6 @@ batches_per_commit = args.batches_per_commit
 print('[TFver] tf version: {:s}'.format(tf.__version__) )
 print('[param] Listing hyper-parameters...')
 print('[param] job_name : {:s}'.format(job_name) )
-print('[param] job_id : {:s}'.format(job_id) )
 print('[param] dataset_dir : {:s}'.format(dataset_dir) )
 print('[param] store_dir : {:s}'.format(store_dir) )
 print('[param] metrics_dir : {:s}'.format(metrics_dir) )
@@ -69,8 +66,14 @@ print('[param] fp16-allreduce: {}'.format(fp16_allreduce) )
 print('[param] warmup_epochs: {:d}'.format(warmup_epochs) )
 print('[param] batches_per_commit: {:d}'.format(batches_per_commit) )
 
-metrics_path = os.path.join(metrics_dir, 'metrics.csv') # TODO: add job name
-checkpoint_path = os.path.join(store_dir, checkpoint_format) # TODO: add job name
+# Set job_name as filename if not specified.
+if not job_name:
+    job_name = os.path.basename(__file__)
+    job_name = os.path.splitext(job_name)[0]
+    print("[Warnning] missing job_name, using file name as job_name: {:s}".format(job_name))
+metrics_path = os.path.join(metrics_dir, job_name + '.csv')
+
+checkpoint_path = os.path.join(store_dir, checkpoint_format)
 
 # Horovod: initialize Horovod.
 hvd.init()
