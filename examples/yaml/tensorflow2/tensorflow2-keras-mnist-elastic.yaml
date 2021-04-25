@@ -20,30 +20,33 @@ spec:
                 value: "1"
               - name: MAX_NP
                 value: "8"
-            command:
-            - horovodrun
+              - name: EPOCHS
+                value: "150"
+              - name: INIT_EPOCH
+                value: "0"
+            command: ["/bin/bash","-c"]
             args:
-            - -np
-            - "1"
-            - --min-np
-            - "$(MIN_NP)"
-            - --max-np
-            - "$(MAX_NP)"
-            - --host-discovery-script
-            - /etc/mpi/discover_hosts.sh
-            # '--network-interface' is required to start elastic training with only 1 worker.
-            - --network-interface
-            - "eth0"
-            - python
-            - /celeste/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
-            - --name
-            - "$(JOB_NAME)"
-            - --epochs 
-            - "150"
-            - --store-dir
-            - "/outputs"
-            - --metrics-dir
-            - "/metrics"
+            - mkdir -p /outputs/$(JOB_NAME);
+              horovodrun
+              -np 1
+              --min-np $(MIN_NP)
+              --max-np $(MAX_NP)
+              --host-discovery-script /etc/mpi/discover_hosts.sh
+              --network-interface eth0
+              python
+              /celeste/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
+              --name $(JOB_NAME)
+              --epochs $(EPOCHS)
+              --init-epoch $(INIT_EPOCH)
+              --store-dir /outputs/$(JOB_NAME)
+              --metrics-dir /metrics |& tee -a /outputs/$(JOB_NAME)/log.txt
+            volumeMounts:
+              - name: outputs
+                mountPath: /outputs
+          volumes:
+            - name: outputs
+              persistentVolumeClaim:
+                claimName: celeste-pvc-outputs
     Worker:
       replicas: 2
       template:
