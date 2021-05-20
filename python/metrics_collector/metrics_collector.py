@@ -1,7 +1,7 @@
 import os
 import csv
 
-from pymongo import MongoClient
+from pymongo import MongoClient, errors
 import pandas as pd
 from datetime import datetime
 
@@ -80,13 +80,13 @@ class metrics_collector():
         # priority = 
 
         info = {
-            "current_epoch": str(current_epoch),
-            "remainning_epochs": str(remainning_epochs),
-            "estimated_remainning_time_sec": str(estimated_remainning_time_sec),
-            "running_time_sec": str(running_time_sec),
-            "waiting_time_sec": str(waiting_time_sec),
-            "GPU_time_sec": str(gpu_time_sec),
-            "elasped_time_sec": str(elasped_time_sec),
+            "current_epoch": int(current_epoch),
+            "remainning_epochs": int(remainning_epochs),
+            "estimated_remainning_time_sec": float(estimated_remainning_time_sec),
+            "running_time_sec": float(running_time_sec),
+            "waiting_time_sec": float(waiting_time_sec),
+            "gpu_time_sec": float(gpu_time_sec),
+            "elasped_time_sec": float(elasped_time_sec),
         }
 
         dic_dict = {'step_time_sec': step_time_sec, 'epoch_time_sec': epoch_time_sec,
@@ -98,7 +98,7 @@ class metrics_collector():
         try:
             result = collection.update_one({"name": job_name}, {"$set": info})
             print("Update succeeded, match count: {}".format(result.matched_count))
-        except pymongo.errors.PyMongoError as e:
+        except errors.PyMongoError as e:
             print("Failed.")
 
     def _update_time_metric(self, df, dic, metric):
@@ -110,7 +110,7 @@ class metrics_collector():
         Return: dictionary. Updated dic.
         """
         for workers in df['workers'].unique():
-            dic[str(workers)] = str(df.loc[df['workers'] == workers][metric].mean())
+            dic[str(workers)] = df.loc[df['workers'] == workers][metric].mean()
         return dic
 
     def _update_speedup(self, epoch_time_sec, speedup):
@@ -123,7 +123,7 @@ class metrics_collector():
         for key in epoch_time_sec:
             if key == '0':
                 continue
-            speedup[key] = str( float(epoch_time_sec['1']) / float(epoch_time_sec[key]) )
+            speedup[key] = epoch_time_sec['1'] / epoch_time_sec[key]
         return speedup
 
     def _update_efficiency(self, speedup, efficiency):
@@ -136,7 +136,7 @@ class metrics_collector():
         for key in speedup:
             if key == '0':
                 continue
-            efficiency[key] = str( float(speedup[key]) / float(key) )
+            efficiency[key] = speedup[key] / float(key)
         return efficiency
 
     def _to_mongo_dict(self, name, dic):
