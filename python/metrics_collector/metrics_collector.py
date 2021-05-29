@@ -1,19 +1,19 @@
 import os
 import csv
+import re
 
 from pymongo import MongoClient, errors
 import pandas as pd
 from datetime import datetime
 
 class metrics_collector():
-    def __init__(self, jobs, db_name):
+    def __init__(self, db_job_info, db_runnings):
         """
         Arguments:
-            jobs: List of job name.
-            db_name: String. Name of database.
+            db_job_info: String. Name of database of job info.
+            db_runnings: String. Name of database of running jobs.
         """
-        self.jobs = jobs
-        self.db_name = db_name
+        self.db_name = db_job_info
         self.metrics_dir = '/metrics'
 
         # Service need to exist before this pod. 
@@ -30,6 +30,17 @@ class metrics_collector():
 
         self.db = self.client[self.db_name]
 
+        # get all running jobs from db
+        self.jobs = []
+        scheduler_collections = self.client[db_runnings].list_collection_names()
+        for collection in scheduler_collections:
+            for entry in self.client[db_runnings][collection].find():
+                self.jobs.append(entry['name'])
+        # self.jobs.append('tensorflow2-keras-mnist-elastic') # TODO: remove this line of testing
+        # self.jobs.append('tensorflow2-keras-mnist-elastic-20060102_030405') # TODO: remove this line of testing
+        print("found running jobs:")
+        print(self.jobs)
+
     def update_info_all(self):
         for job in self.jobs:
             self.parse_csv_and_update_db(job)
@@ -42,15 +53,19 @@ class metrics_collector():
             job: String. Job name.
         """
         print("Processing job: {}".format(job))
-        job_name = job   
-        collection = self.db[job] # TODO: remove timestamp
+        job_name = job
+        # remove timestamp from job_name
+        # example job_name with timestamp: "a-20060102_030405"
+        # https://stackoverflow.com/questions/36583329/regular-expression-remove-time-stamp-from-file-name
+        collection_name = re.sub(r"-\d{8}_\d{6}$", "", job_name)
+        collection = self.db[collection_name]
 
         metrics_path = os.path.join(self.metrics_dir, job + '.csv')
         try:
             df = pd.read_csv(metrics_path)
-            print("Read csv sucessfully.")
+            print("Read csv sucessfully: {}".format(metrics_path))
         except:
-            print("Failed to read csv, skipping...")
+            print("Failed to read csv: {}, skipping...".format(metrics_path))
             return
 
         post = collection.find_one({'name': job_name}) # TODO: error handling
