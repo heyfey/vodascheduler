@@ -55,9 +55,9 @@ class metrics_collector():
         print("Processing job: {}".format(job))
         job_name = job
         # remove timestamp from job_name
-        # example job_name with timestamp: "a-20060102_030405"
+        # example job_name with timestamp: "a-20060102-030405"
         # https://stackoverflow.com/questions/36583329/regular-expression-remove-time-stamp-from-file-name
-        collection_name = re.sub(r"-\d{8}_\d{6}$", "", job_name)
+        collection_name = re.sub(r"-\d{8}-\d{6}$", "", job_name)
         collection = self.db[collection_name]
 
         metrics_path = os.path.join(self.metrics_dir, job + '.csv')
