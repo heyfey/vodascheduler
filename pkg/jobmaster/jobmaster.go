@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"sort"
 	"time"
 
 	"github.com/heyfey/celeste/pkg/common/logger"
@@ -271,14 +272,22 @@ func (jm *jobMaster) GetTrainingJob(jobName string) error {
 
 // GetAllTrainingJob lists all training jobs and their scheduler, status, and waiting/running/total time
 func (jm *jobMaster) GetAllTrainingJob() {
-	fmt.Printf("%-50s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
+	fmt.Printf("%-60s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
 
 	for _, scheduler := range jm.schedulers {
+		buffer := make([]string, 0)
+
 		scheduler.SchedulerLock.RLock()
 		for job, status := range scheduler.JobStatuses {
-			fmt.Printf("%-50s %-10s %-10d %-10s\n", job, string(status), scheduler.JobNumGPU[job], scheduler.SchedulerID)
+			str := fmt.Sprintf("%-60s %-10s %-10d %-10s\n", job, string(status), scheduler.JobNumGPU[job], scheduler.SchedulerID)
+			buffer = append(buffer, str)
 		}
 		scheduler.SchedulerLock.RUnlock()
+
+		sort.Strings(buffer)
+		for _, str := range buffer {
+			fmt.Printf(str)
+		}
 	}
 }
 
