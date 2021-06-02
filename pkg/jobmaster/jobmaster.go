@@ -270,8 +270,16 @@ func (jm *jobMaster) GetTrainingJob(jobName string) error {
 }
 
 // GetAllTrainingJob lists all training jobs and their scheduler, status, and waiting/running/total time
-func (jm *jobMaster) GetAllTrainingJob() error {
-	return nil
+func (jm *jobMaster) GetAllTrainingJob() {
+	fmt.Printf("%-50s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
+
+	for _, scheduler := range jm.schedulers {
+		scheduler.SchedulerLock.RLock()
+		for job, status := range scheduler.JobStatuses {
+			fmt.Printf("%-50s %-10s %-10d %-10s\n", job, string(status), scheduler.JobNumGPU[job], scheduler.SchedulerID)
+		}
+		scheduler.SchedulerLock.RUnlock()
+	}
 }
 
 // GetScheduler lists scheduler's number of GPUs and waiting/running/completed/failed jobs
