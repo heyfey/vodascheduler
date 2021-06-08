@@ -52,7 +52,6 @@ type Scheduler struct {
 
 	// channels used for main logic of the scheduler, should only be cousumed by scheduler.Run()
 	ReschedCh       chan time.Time
-	RestartCh       chan string
 	StopSchedulerCh chan time.Time
 
 	session  *mgo.Session
@@ -85,7 +84,6 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		SchedulerLock:   sync.RWMutex{},
 		Algorithm:       algorithm.NewFIFO(gpus, id), // TODO
 		ReschedCh:       make(chan time.Time, reschedChannelSize),
-		RestartCh:       make(chan string, restartChannelSize),
 		StopSchedulerCh: make(chan time.Time),
 		session:         session,
 		database:        database,
@@ -110,8 +108,6 @@ func (s *Scheduler) Run() {
 			// TODO: check timestamp
 			// if r ...
 			s.resched()
-		case job := <-s.RestartCh:
-			s.restartTrainingJob(job)
 		case _ = <-s.StopSchedulerCh:
 			return
 		}
@@ -378,10 +374,11 @@ func (s *Scheduler) watchingMPIJobModified() {
 					s.handleJobCompleted(name)
 				}
 				s.SchedulerLock.Unlock()
-			} else if phase == kubeflowcommon.JobFailed { // TODO: identify if it is runtime error (segmentation fault)
+			} else if phase == kubeflowcommon.JobFailed {
 				s.SchedulerLock.Lock()
-				if s.JobStatuses[name] != types.JobFailed { // is the first failed event
-					s.handleJobFailed(name)
+				if s.JobStatuses[name] != types.JobFailed { // still can't be sure it is the first failed event
+					restartPolicy := m.Spec.MPIReplicaSpecs["Launcher"].RestartPolicy
+					s.handleJobFailed(name, restartPolicy) // this may be called multiple times in one job failed event
 				}
 				s.SchedulerLock.Unlock()
 			}
@@ -406,45 +403,24 @@ func (s *Scheduler) handleJobCompleted(job string) {
 	return
 }
 
-// handleJobFailed updates job status and sends restart signal
+// handleJobFailed makes essential updates and sends resched signal only when
+// the MPIJob NOT using OnFailure restart policy. Because when using OnFailure,
+// the training job will be restart automatically.
+// (Do not use ExitCode since there are hanging issue when job fails)
 // It should only be called by watchingMPIJobModified, and should
 // acquire lock before calling it
-func (s *Scheduler) handleJobFailed(job string) {
+func (s *Scheduler) handleJobFailed(job string, restartPolicy kubeflowcommon.RestartPolicy) {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	log.Info("Training job failed, try to restart", "job", job, "scheduler", s.SchedulerID)
+	log.Info("Training job failed", "job", job, "restartPolicy", restartPolicy, "scheduler", s.SchedulerID)
 
-	s.JobStatuses[job] = types.JobFailed
+	if restartPolicy != kubeflowcommon.RestartPolicyOnFailure {
+		s.JobStatuses[job] = types.JobFailed
+		s.Queue.Delete(job)
 
-	s.RestartCh <- job
-	return
-}
-
-// restartTrainingJob deletes and re-creates MPIJob of training job
-func (s *Scheduler) restartTrainingJob(job string) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	s.SchedulerLock.Lock()
-	defer s.SchedulerLock.Unlock()
-
-	if s.JobStatuses[job] != types.JobFailed { // is "Waiting", "Running", "Completed", or not exist (deleted)
-		// s.SchedulerLock.Unlock()
-		return
-	}
-	// s.SchedulerLock.Unlock()
-
-	log.Info("Trying to restart training job", "job", job, "scheduler", s.SchedulerID)
-	// restartTrainingJob and resched never happens concurrently, but may race with deleteTrainingJob
-	// it is safe to halt and start training job without lock (?)
-	err := s.haltTrainingJob(job)
-	if err != nil {
-		log.Error(err, "Could not halt training job, this should not happen", "job", job, "scheduler", s.SchedulerID)
-	}
-	s.startTrainingJob(job)
-	if err != nil {
-		log.Error(err, "Could start training job, this should not happen", "job", job, "scheduler", s.SchedulerID)
+		now := time.Now()
+		s.ReschedCh <- now
 	}
 }
 
