@@ -29,7 +29,6 @@ parser.add_argument('--checkpoint-format' , dest ="checkpoint_format", type=str,
 
 parser.add_argument("--lr"                , dest ="lr", type=float, default=0.001, help="base learning rate for a single GPU")
 parser.add_argument("--batch-size"        , dest ="batch_size", type=int, default=128, help="local batch size")
-parser.add_argument("--init-epoch"        , dest ="init_epoch", type=int, default=0, help="initial epoch")
 parser.add_argument("--epochs"            , dest ="epochs", type=int, default=24, help="number of epochs to train")
 parser.add_argument('--fp16-allreduce'    , dest ="fp16_allreduce", action='store_true', default=False, help='use fp16 compression during allreduce')
 parser.add_argument('--warmup-epochs'     , dest ="warmup_epochs", type=int, default=0, help='number of warmup epochs')
@@ -45,7 +44,6 @@ metrics_dir        = args.m_dir
 checkpoint_format  = args.checkpoint_format
 batch_size         = args.batch_size
 base_lr            = args.lr
-init_epoch         = args.init_epoch
 epochs             = args.epochs
 fp16_allreduce     = args.fp16_allreduce
 warmup_epochs      = args.warmup_epochs
@@ -60,7 +58,6 @@ print('[param] metrics_dir : {:s}'.format(metrics_dir) )
 print('[param] checkpoint_format : {:s}'.format(checkpoint_format) )
 print('[param] batch_size: {:d}'.format(batch_size) )
 print('[param] base_lr: {:f}'.format(base_lr) )
-print('[param] init_epoch: {:d}'.format(init_epoch) )
 print('[param] epochs: {:d}'.format(epochs) )
 print('[param] fp16-allreduce: {}'.format(fp16_allreduce) )
 print('[param] warmup_epochs: {:d}'.format(warmup_epochs) )
@@ -84,9 +81,6 @@ for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 if gpus:
     tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
-
-# If set > 0, will resume training from a given checkpoint.
-resume = True if init_epoch > 0 else False
 
 # Horovod: print logs on the first worker.
 verbose = 2 if hvd.rank() == 0 else 0
@@ -143,22 +137,21 @@ model.compile(loss=tf.losses.SparseCategoricalCrossentropy(),
 # https://sourcegraph.com/github.com/tensorflow/tensorflow@v2.4.1/-/blob/tensorflow/python/keras/optimizer_v2/optimizer_v2.py#L351:10
 model.fit(dataset, steps_per_epoch=1, epochs=1, callbacks=None)
 
-if resume:
-    model.load_weights(checkpoint_path)
 
-# TODO: Should we get init_epoch from args or csv? Currently from args.
-state = hvd.elastic.KerasState(model, batch=0, epoch=init_epoch)
-
-# This stll causees problem since the newly added workers has different 
-# init_epoch with the original workers. When we accidently remove the 
-# original root rank, the new root rank may has incorrect number of current epoch.
-# Therefore, we track epoch in the csv in ther callback.
+# Track epoch in the csv in the callback.
 # Don't set append=False. Make sure empty csv when training from scratch, 
 # or epoch may be overrided in the callback.
 metrics_logger = MetricsCSVLogger(metrics_path, append=True, 
-                                  initial_epoch=init_epoch,
                                   total_epochs=epochs)
 set_logger_params(metrics_logger, batch_size=batch_size, workers=hvd.size())
+
+# Get init_epoch from csv
+init_epoch = metrics_logger.epoch
+if init_epoch > 0:
+    model.load_weights(checkpoint_path)
+
+state = hvd.elastic.KerasState(model, batch=0, epoch=init_epoch)
+
 checkpoint = tf.keras.callbacks.ModelCheckpoint(checkpoint_path, save_weights_only=True)
 
 callbacks = [

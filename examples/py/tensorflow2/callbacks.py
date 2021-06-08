@@ -5,6 +5,7 @@ import collections
 import csv
 import io
 import datetime
+import os
 
 import numpy as np
 import six
@@ -22,6 +23,7 @@ def set_logger_params(logger, batch_size=None, workers=1):
     params['global_batch_size'] = batch_size * workers
   logger.set_params(params)
 
+# TODO(heyfey): rename this class becasue it does more than logging
 class MetricsCSVLogger(Callback):
   """Callback that streams epoch results to a CSV file.
   Supports all values that can be represented as a string,
@@ -36,14 +38,12 @@ class MetricsCSVLogger(Callback):
       separator: String used to separate elements in the CSV file.
       append: Boolean. True: append if file exists (useful for continuing
           training). False: overwrite existing file.
-      initial_epoch: Integer. Epoch at which to start training (useful for 
-          resuming a previous training run).
       total_epochs: Integer. Total training epochs.
       verbose: 0 or 1. Verbosity mode. 0 = silent, 1 = one line per epoch.
   """
 
   def __init__(self, filename, separator=',', append=False, 
-               initial_epoch=0, total_epochs=0, verbose=1):
+               total_epochs=0, verbose=1):
     self.sep = separator
     self.filename = path_to_string(filename)
     self.append = append
@@ -52,14 +52,18 @@ class MetricsCSVLogger(Callback):
     self.append_header = True
 
     self.verbose = verbose
-    self.init_epoch = initial_epoch
     self.total_epochs = total_epochs
-    # Newly added workers would has different epoch information, plus we may 
-    # remove original root rank (leader) during elastic training.
-    # To resolve miss-synced epoch and init_epoch,
-    # we will get latest epoch from .csv in on_train_begin(), and track the 
-    # epoch by increasing self.epoch by 1 in on_epoch_end().
-    self.epoch = initial_epoch
+
+    # Get latest epoch from .csv, and track the epoch by increasing self.epoch 
+    # by 1 in on_epoch_end().
+    # Should make sure csv empty when training from scratch.
+    if os.path.isfile(self.filename):
+      with open(self.filename, mode='r') as f:
+        rows = csv.DictReader(f)
+        for row in rows:
+          self.epoch = int(row['epoch']) + 1
+    else:
+      self.epoch = 0
     
     self.params = {}
     if six.PY2:
@@ -89,12 +93,10 @@ class MetricsCSVLogger(Callback):
                             **self._open_args)
 
     # Sync self.epoch with the csv file, we have ensured the file exist.
-    # Need to make sure csv empty when not resume training, and the
-    # initial epoch in the training script is same as the last row of the csv.
     with open(self.filename, mode='r') as f:
       rows = csv.DictReader(f)
       for row in rows:
-        self.epoch = max(int(row['epoch']) + 1, self.init_epoch)
+        self.epoch = int(row['epoch']) + 1
 
   def on_epoch_begin(self, epoch, logs=None):
     self.epoch_start_time = datetime.datetime.now()
