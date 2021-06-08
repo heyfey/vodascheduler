@@ -8,6 +8,7 @@ spec:
   mpiReplicaSpecs:
     Launcher:
       replicas: 1
+      restartPolicy: OnFailure
       template:
         spec:
           containers:
@@ -26,7 +27,8 @@ spec:
                 value: "0"
             command: ["/bin/bash","-c"]
             args:
-            - mkdir -p /outputs/$(JOB_NAME);
+            - set -o pipefail;
+              mkdir -p /outputs/$(JOB_NAME);
               horovodrun
               -np 1
               --min-np $(MIN_NP)
