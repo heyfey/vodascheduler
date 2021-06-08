@@ -11,7 +11,7 @@ spec:
       template:
         spec:
           containers:
-          - image: heyfey/horovod:latest
+          - image: heyfey/horovod:sha-6916985-tf2.3.0-torch1.6.0-py3.7-cuda10.1-blacklist-recovery
             name: mpi-launcher
             env:
               - name: JOB_NAME
@@ -52,7 +52,7 @@ spec:
       template:
         spec:
           containers:
-          - image: heyfey/horovod:latest
+          - image: heyfey/horovod:sha-6916985-tf2.3.0-torch1.6.0-py3.7-cuda10.1-blacklist-recovery
             name: mpi-worker
             resources:
               limits:
