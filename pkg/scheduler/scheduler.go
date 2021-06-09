@@ -211,7 +211,8 @@ func (s *Scheduler) compareResults(oldResult map[string]int) ([]string, []string
 	for job, n := range oldResult {
 		if n > s.JobNumGPU[job] {
 			if s.JobNumGPU[job] == 0 {
-				if s.JobStatuses[job] != types.JobCompleted { // don't delete a completed job
+				// don't delete a completed or failed job
+				if s.JobStatuses[job] != types.JobCompleted && s.JobStatuses[job] != types.JobFailed {
 					halts = append(halts, job)
 				}
 			} else {
