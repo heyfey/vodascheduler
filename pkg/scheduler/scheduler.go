@@ -386,9 +386,8 @@ func (s *Scheduler) watchingMPIJobModified() {
 				s.SchedulerLock.Unlock()
 			} else if phase == kubeflowcommon.JobFailed {
 				s.SchedulerLock.Lock()
-				if s.JobStatuses[name] != types.JobFailed { // still can't be sure it is the first failed event
-					restartPolicy := m.Spec.MPIReplicaSpecs["Launcher"].RestartPolicy
-					s.handleJobFailed(name, restartPolicy) // this may be called multiple times in one job failed event
+				if s.JobStatuses[name] != types.JobFailed { // is the first failed event
+					s.handleJobFailed(name)
 				}
 				s.SchedulerLock.Unlock()
 			}
@@ -413,25 +412,24 @@ func (s *Scheduler) handleJobCompleted(job string) {
 	return
 }
 
-// handleJobFailed makes essential updates and sends resched signal only when
-// the MPIJob NOT using OnFailure restart policy. Because when using OnFailure,
-// the training job will be restart automatically.
+// handleJobFailed makes essential updates and sends resched signal.
+// Note that if a job uses OnFailure restart policy, the watcher won't receive
+// a event with JobFailed phase even when the job fails, thus this function
+// won't be called in this situation.
 // (Do not use ExitCode since there are hanging issue when job fails)
 // It should only be called by watchingMPIJobModified, and should
 // acquire lock before calling it
-func (s *Scheduler) handleJobFailed(job string, restartPolicy kubeflowcommon.RestartPolicy) {
+func (s *Scheduler) handleJobFailed(job string) {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	log.Info("Training job failed", "job", job, "restartPolicy", restartPolicy, "scheduler", s.SchedulerID)
+	log.Info("Training job failed", "job", job, "scheduler", s.SchedulerID)
 
-	if restartPolicy != kubeflowcommon.RestartPolicyOnFailure {
-		s.JobStatuses[job] = types.JobFailed
-		s.Queue.Delete(job)
+	s.JobStatuses[job] = types.JobFailed
+	s.Queue.Delete(job)
 
-		now := time.Now()
-		s.ReschedCh <- now
-	}
+	now := time.Now()
+	s.ReschedCh <- now
 }
 
 // Update cluster view (e.g. availiable GPU count), may need clusterView structure
