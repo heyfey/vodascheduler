@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
+	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -346,7 +347,16 @@ func (s *Scheduler) watchingMPIJobModified() {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	watcher, err := s.mpiClient.MPIJobs("").Watch(metav1.ListOptions{}) // TODO: may want to specify namespace and ListOptions
+	// mpijobs will have the latest rescouce version
+	mpijobs, err := s.mpiClient.MPIJobs("").List(metav1.ListOptions{})
+	if err != nil {
+		log.Error(err, "Failed to list MPIJobs", "scheduler", s.SchedulerID)
+		logger.Flush()
+		panic(err)
+	}
+
+	// TODO: may want to specify namespace
+	watcher, err := watchtools.NewRetryWatcher(mpijobs.ResourceVersion, s.mpiClient.MPIJobs(""))
 	if err != nil {
 		log.Error(err, "Failed create watcher", "scheduler", s.SchedulerID)
 		logger.Flush()
