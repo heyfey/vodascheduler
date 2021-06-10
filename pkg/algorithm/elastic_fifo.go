@@ -61,6 +61,9 @@ func (f *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 			if result[job.JobName] < job.Config.MaxGPU || !sastified[job.JobName] {
 				result[job.JobName] += 1
 				freeGPU -= 1
+				if result[job.JobName] == job.Config.MaxGPU {
+					sastified[job.JobName] = true
+				}
 				if freeGPU == 0 {
 					break
 				}
