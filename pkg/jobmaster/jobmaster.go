@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"sort"
 	"time"
 
@@ -38,7 +37,6 @@ type JobMaster struct {
 }
 
 func NewJobMaster() *JobMaster {
-	logger.InitLogger()
 	log := logger.GetLogger()
 	defer logger.Flush()
 
@@ -86,19 +84,16 @@ func NewJobMaster() *JobMaster {
 	return jm
 }
 
-// CreateTrainingJob creates a new training job from yaml, assigns it
-// to scheduler and triggers a resched
-func (jm *JobMaster) CreateTrainingJob(file string) error {
+// CreateTrainingJob creates a new training job from bytes data, assigns it
+// to scheduler, triggers a resched and returns the name of the training job.
+func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	fmt.Printf("Parsing yaml: %s\n", file)
-	log.Info("Parsing yaml", "file", file)
-	mpijob, err := yamlToMPIJob(file)
+	mpijob, err := bytesToMPIJob(data)
 	if err != nil {
-		fmt.Printf("Failed to parse yaml: %s\n", file)
-		log.Info("Failed to convert yaml to mpijob", "err", err, "file", file)
-		return err
+		log.Info("Failed to convert data to mpijob", "err", err)
+		return "", err
 	}
 
 	// find history information of the training job by its name (assume history exists //TODO)
@@ -112,7 +107,7 @@ func (jm *JobMaster) CreateTrainingJob(file string) error {
 	err = sess.DB(databaseNameJobInfo).C(jobCollection).Find(bson.M{"name": jobName}).One(&info)
 	if err != nil {
 		log.Info("Could not find job info in mongo", "err", err, "database", databaseNameJobInfo, "collection", jobCollection, "job", jobName)
-		return err // TODO: create basic training record in mongodb if not exist
+		return "", err // TODO: create basic training record in mongodb if not exist
 	}
 
 	// add timestamp to name of the training job
@@ -124,14 +119,14 @@ func (jm *JobMaster) CreateTrainingJob(file string) error {
 	t, err := trainingjob.NewTrainingJob(*mpijob, jobCollection, now)
 	if err != nil {
 		log.Info("Failed to create training job", "err", err, "job", jobName)
-		return err
+		return "", err
 	}
 
 	info = initJobInfo(info, jobName, t.Config.Epochs)
 	err = sess.DB(databaseNameJobInfo).C(jobCollection).Insert(info)
 	if err != nil {
 		log.Error(err, "Could not insert record to mongo", "database", databaseNameJobInfo, "collection", jobCollection, "job", jobName)
-		return err
+		return "", err
 	}
 	// sess.Close()
 
@@ -154,21 +149,12 @@ func (jm *JobMaster) CreateTrainingJob(file string) error {
 	// trigger resched
 	sched.ReschedCh <- now
 
-	fmt.Printf("Training job created: %s\n", jobName)
-	fmt.Printf("View your logs by:\n%s\n", "    kubectl logs "+jobName+"-launcher")
 	log.Info("Training job created", "job", jobName)
-	return nil
+	return jobName, nil
 }
 
-func yamlToMPIJob(file string) (*kubeflowv1.MPIJob, error) {
-	var (
-		err  error
-		data []byte
-	)
-
-	if data, err = ioutil.ReadFile(file); err != nil {
-		return nil, err
-	}
+func bytesToMPIJob(data []byte) (*kubeflowv1.MPIJob, error) {
+	var err error
 
 	if data, err = yaml2.ToJSON(data); err != nil {
 		return nil, err
@@ -219,8 +205,7 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	// TODO: should this be locked?
 	schedID := jm.jobScheduler[jobName]
 	if schedID == "" {
-		fmt.Printf("Training job not found: %s", jobName)
-		return errors.New("Training job not found")
+		return errors.New(fmt.Sprintf("Training job not found: %s", jobName))
 	}
 	delete(jm.jobScheduler, jobName)
 
@@ -260,7 +245,6 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 		sched.ReschedCh <- time.Now()
 	}
 
-	fmt.Printf("Training job deleted: %s", jobName)
 	log.Info("Training job deleted", "job", jobName)
 	return nil
 }
@@ -271,8 +255,8 @@ func (jm *JobMaster) GetTrainingJob(jobName string) error {
 }
 
 // GetAllTrainingJob lists all training jobs and their scheduler, status, and waiting/running/total time
-func (jm *JobMaster) GetAllTrainingJob() {
-	fmt.Printf("%-60s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
+func (jm *JobMaster) GetAllTrainingJob() string {
+	result := fmt.Sprintf("%-60s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
 
 	for _, scheduler := range jm.schedulers {
 		buffer := make([]string, 0)
@@ -286,9 +270,10 @@ func (jm *JobMaster) GetAllTrainingJob() {
 
 		sort.Strings(buffer)
 		for _, str := range buffer {
-			fmt.Printf(str)
+			result = fmt.Sprintf("%s%s", result, str)
 		}
 	}
+	return result
 }
 
 // GetScheduler lists scheduler's number of GPUs and waiting/running/completed/failed jobs

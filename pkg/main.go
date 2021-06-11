@@ -2,23 +2,28 @@ package main
 
 import (
 	"fmt"
-	"time"
+	"net/http"
 
-	"github.com/heyfey/celeste/pkg/jobmaster"
+	"github.com/heyfey/celeste/pkg/common/logger"
+	"github.com/heyfey/celeste/pkg/service"
+)
+
+const (
+	port    = "10000"
+	version = "0.0.1"
+	msg     = "Celeste - DLT jobs scheduler"
 )
 
 func main() {
-	jm := jobmaster.NewJobMaster()
+	fmt.Printf("%s (v%s)\n", msg, version)
 
-	// wait for job master to start
-	time.Sleep(time.Duration(5) * time.Second)
+	logger.InitLogger()
+	log := logger.GetLogger()
 
-	jm.CreateTrainingJob("../examples/yaml/tensorflow2/tensorflow2-keras-mnist-elastic.yaml")
-	jm.GetAllTrainingJob()
+	log.Info(msg, "version", version)
+	log.Info("Starting service")
 
-	for {
-		time.Sleep(time.Duration(5) * time.Second)
-		jm.GetAllTrainingJob()
-		fmt.Println("tick")
-	}
+	service := service.NewService()
+	err := http.ListenAndServe(":"+port, service.Router)
+	log.Error(err, "Service shut down")
 }
