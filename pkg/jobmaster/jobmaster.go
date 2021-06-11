@@ -28,7 +28,7 @@ const (
 // type JobMasterMetrics struct {
 // }
 
-type jobMaster struct {
+type JobMaster struct {
 	// schedulers and their names
 	schedulers map[string]*scheduler.Scheduler
 	// scheduler for each job
@@ -37,7 +37,7 @@ type jobMaster struct {
 	// metrics      *JobMasterMetrics
 }
 
-func NewJobMaster() *jobMaster {
+func NewJobMaster() *JobMaster {
 	logger.InitLogger()
 	log := logger.GetLogger()
 	defer logger.Flush()
@@ -72,7 +72,7 @@ func NewJobMaster() *jobMaster {
 		schedulers[gpuType] = sched
 	}
 
-	jm := &jobMaster{
+	jm := &JobMaster{
 		schedulers:   schedulers,
 		jobScheduler: map[string]string{},
 		session:      session,
@@ -88,7 +88,7 @@ func NewJobMaster() *jobMaster {
 
 // CreateTrainingJob creates a new training job from yaml, assigns it
 // to scheduler and triggers a resched
-func (jm *jobMaster) CreateTrainingJob(file string) error {
+func (jm *JobMaster) CreateTrainingJob(file string) error {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
@@ -212,7 +212,7 @@ func initJobInfo(basicInfo mongo.TrainingJobInfo, jobName string, epochs int) mo
 }
 
 // DeleteTrainingJob deletes a training job from scheduler, and triggers a resched
-func (jm *jobMaster) DeleteTrainingJob(jobName string) error {
+func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
@@ -266,12 +266,12 @@ func (jm *jobMaster) DeleteTrainingJob(jobName string) error {
 }
 
 // GetTrainingJob lists a training job and its scheduler, status, and waiting/running/total time
-func (jm *jobMaster) GetTrainingJob(jobName string) error {
+func (jm *JobMaster) GetTrainingJob(jobName string) error {
 	return nil
 }
 
 // GetAllTrainingJob lists all training jobs and their scheduler, status, and waiting/running/total time
-func (jm *jobMaster) GetAllTrainingJob() {
+func (jm *JobMaster) GetAllTrainingJob() {
 	fmt.Printf("%-60s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
 
 	for _, scheduler := range jm.schedulers {
@@ -292,11 +292,11 @@ func (jm *jobMaster) GetAllTrainingJob() {
 }
 
 // GetScheduler lists scheduler's number of GPUs and waiting/running/completed/failed jobs
-func (jm *jobMaster) GetScheduler(scheduler string) error {
+func (jm *JobMaster) GetScheduler(scheduler string) error {
 	return nil
 }
 
 // GetAllScheduler lists all scheduler and their number of GPUs and waiting/running/completed/failed jobs
-func (jm *jobMaster) GetAllScheduler(scheduler string) error {
+func (jm *JobMaster) GetAllScheduler(scheduler string) error {
 	return nil
 }
