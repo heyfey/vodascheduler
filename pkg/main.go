@@ -19,6 +19,7 @@ func main() {
 
 	logger.InitLogger()
 	log := logger.GetLogger()
+	defer logger.Flush()
 
 	log.Info(msg, "version", version)
 	log.Info("Starting service")
