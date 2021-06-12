@@ -25,8 +25,7 @@ spec:
                 value: "150"
             command: ["/bin/bash","-c"]
             args:
-            - set -o pipefail;
-              mkdir -p /outputs/$(JOB_NAME);
+            - mkdir -p /outputs/$(JOB_NAME);
               horovodrun
               -np 1
               --min-np $(MIN_NP)
@@ -38,7 +37,7 @@ spec:
               --name $(JOB_NAME)
               --epochs $(EPOCHS)
               --store-dir /outputs/$(JOB_NAME)
-              --metrics-dir /metrics |& tee -a /outputs/$(JOB_NAME)/log.txt
+              --metrics-dir /metrics
             volumeMounts:
               - name: outputs
                 mountPath: /outputs
