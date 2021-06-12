@@ -4,6 +4,7 @@ package service
 
 import (
 	"github.com/gorilla/mux"
+	"github.com/heyfey/celeste/config"
 	"github.com/heyfey/celeste/pkg/jobmaster"
 )
 
@@ -23,7 +24,7 @@ func NewService() *Service {
 
 func (s *Service) initRoutes() {
 	s.Router.HandleFunc("/", homePage)
-	s.Router.HandleFunc("/training", s.createTrainingJobHandler()).Methods("POST")
-	s.Router.HandleFunc("/training", s.deleteTrainingJobHandler()).Methods("DELETE")
-	s.Router.HandleFunc("/training", s.getAllTrainingJobHandler()).Methods("GET")
+	s.Router.HandleFunc(config.EntryPoint, s.createTrainingJobHandler()).Methods("POST")
+	s.Router.HandleFunc(config.EntryPoint, s.deleteTrainingJobHandler()).Methods("DELETE")
+	s.Router.HandleFunc(config.EntryPoint, s.getAllTrainingJobHandler()).Methods("GET")
 }

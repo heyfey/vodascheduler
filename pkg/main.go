@@ -4,27 +4,22 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/heyfey/celeste/config"
 	"github.com/heyfey/celeste/pkg/common/logger"
 	"github.com/heyfey/celeste/pkg/service"
 )
 
-const (
-	port    = "10000"
-	version = "0.0.1"
-	msg     = "Celeste - DLT jobs scheduler"
-)
-
 func main() {
-	fmt.Printf("%s (v%s)\n", msg, version)
+	fmt.Printf("%s (v%s)\n", config.Msg, config.Version)
 
 	logger.InitLogger()
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	log.Info(msg, "version", version)
+	log.Info(config.Msg, "version", config.Version)
 	log.Info("Starting service")
 
 	service := service.NewService()
-	err := http.ListenAndServe(":"+port, service.Router)
+	err := http.ListenAndServe(":"+config.Port, service.Router)
 	log.Error(err, "Service shut down")
 }
