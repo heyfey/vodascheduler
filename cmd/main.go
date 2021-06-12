@@ -20,7 +20,7 @@ func main() {
 		{
 			Name:   "create",
 			Usage:  "Create a new training job from YAML",
-			Action: cmd.Create,
+			Action: cmd.CreateJob,
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "filename",
@@ -33,7 +33,7 @@ func main() {
 		{
 			Name:   "delete",
 			Usage:  "Delete a training job by name",
-			Action: cmd.Delete,
+			Action: cmd.DeleteJob,
 		},
 		{
 			Name:  "get",
