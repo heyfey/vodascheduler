@@ -1,0 +1,21 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: metrics-collector
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: metrics-collector
+            image: heyfey/celeste-metrics-collector
+            volumeMounts:
+            - name: metrics
+              mountPath: /metrics
+          volumes:
+            - name: metrics
+              persistentVolumeClaim:
+                claimName: celeste-pvc-metrics
+          restartPolicy: OnFailure
