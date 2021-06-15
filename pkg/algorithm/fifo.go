@@ -50,6 +50,6 @@ func (f *FIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 
 	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", f.schedulerID, "algorithm", f.algorithm)
 
-	validateResult(f.totalGPU, result)
+	validateResult(f.totalGPU, result, jobs)
 	return result
 }
