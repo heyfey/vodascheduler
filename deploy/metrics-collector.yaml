@@ -11,6 +11,7 @@ spec:
           containers:
           - name: metrics-collector
             image: heyfey/celeste-metrics-collector
+            imagePullPolicy: IfNotPresent
             volumeMounts:
             - name: metrics
               mountPath: /metrics
@@ -18,4 +19,4 @@ spec:
             - name: metrics
               persistentVolumeClaim:
                 claimName: celeste-pvc-metrics
-          restartPolicy: OnFailure
+          restartPolicy: Never
