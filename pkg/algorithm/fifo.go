@@ -16,27 +16,27 @@ type FIFO struct {
 }
 
 func NewFIFO(totalGPU int, id string) *FIFO {
-	f := &FIFO{
+	a := &FIFO{
 		algorithm:   "FIFO",
 		totalGPU:    totalGPU,
 		schedulerID: id,
 	}
-	return f
+	return a
 }
 
-func (f *FIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
+func (a *FIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
 	result = make(map[string]int)
-	freeGPU := f.totalGPU
+	freeGPU := a.totalGPU
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
 		return jobs[i].Submitted.Before(jobs[j].Submitted)
 	})
 
-	log.V(5).Info("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", f.schedulerID, "algorithm", f.algorithm)
+	log.V(5).Info("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	// allocate the basic portion
 	for _, job := range jobs {
@@ -48,8 +48,8 @@ func (f *FIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 		}
 	}
 
-	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", f.schedulerID, "algorithm", f.algorithm)
+	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
-	validateResult(f.totalGPU, result, jobs)
+	validateResult(a.totalGPU, result, jobs)
 	return result
 }
