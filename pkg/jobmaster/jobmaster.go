@@ -16,6 +16,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	yaml2 "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -115,6 +116,7 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	jobName = jobName + "-" + now.Format("20060102-030405")
 	mpijob.SetName(jobName)
 	setEnvJobName(mpijob, jobName)
+	addPodAffinity(mpijob, jobName)
 
 	t, err := trainingjob.NewTrainingJob(*mpijob, jobCollection, now)
 	if err != nil {
@@ -181,6 +183,32 @@ func setEnvJobName(mpijob *kubeflowv1.MPIJob, name string) {
 	}
 	// environment variable "JOB_NAME" not found, add it by ourselves
 	env = append(env, v1.EnvVar{Name: string(types.JobName), Value: name})
+}
+
+// addPodAffinity adds pod affinity to all worker pods.
+// Cautious that it will erase all affinity in the origianl MPIJob.
+func addPodAffinity(mpijob *kubeflowv1.MPIJob, name string) {
+	workerSpec := mpijob.Spec.MPIReplicaSpecs["Worker"]
+	// TODO: check workerSpec.Template.Spec.Affinity == nil; we don't want to erase it if not nil
+	requirement := []metav1.LabelSelectorRequirement{{
+		Key:      "mpi-job-name",
+		Operator: metav1.LabelSelectorOpIn,
+		Values:   []string{name},
+	}}
+
+	term := v1.WeightedPodAffinityTerm{
+		Weight: 90,
+		PodAffinityTerm: v1.PodAffinityTerm{
+			LabelSelector: &metav1.LabelSelector{MatchExpressions: requirement},
+			TopologyKey:   "kubernetes.io/hostname",
+		},
+	}
+
+	affinity := &v1.Affinity{PodAffinity: &v1.PodAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{term},
+	}}
+
+	workerSpec.Template.Spec.Affinity = affinity
 }
 
 // TODO: Some jobs need to calcaulate info base on steps instead of epochs
