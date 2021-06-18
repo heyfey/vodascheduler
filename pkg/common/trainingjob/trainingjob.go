@@ -43,6 +43,7 @@ type TrainingJob struct {
 
 // JobConfig represents user training configurations specified by user
 type JobConfig struct {
+	NP     int `bson:"np" json:"np"`
 	MinGPU int `bson:"min_np" json:"min_np"`
 	MaxGPU int `bson:"max_np" json:"max_np"`
 	Epochs int `bson:"epochs" json:"epochs"`
@@ -59,6 +60,7 @@ type JobInfo struct {
 func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.Time) (*TrainingJob, error) {
 
 	var (
+		np     int
 		minGPU int
 		maxGPU int
 		epochs int
@@ -78,6 +80,10 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 			if maxGPU, err = strconv.Atoi(env[i].Value); err != nil {
 				return nil, err
 			}
+		} else if env[i].Name == string(types.JobNP) {
+			if np, err = strconv.Atoi(env[i].Value); err != nil {
+				return nil, err
+			}
 		} else if env[i].Name == string(types.JobEpochs) {
 			if epochs, err = strconv.Atoi(env[i].Value); err != nil {
 				return nil, err
@@ -88,9 +94,15 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 			}
 		}
 	}
-	// TODO: error handling if either "MIN_NP", "MAX_NP", "EPOCHs" or "JOB_NAME" is missing
+	// TODO: error handling if either "MIN_NP", "MAX_NP", "EPOCHs" or "JOB_NAME" is missing or invalid
+
+	// if NP not specified
+	if np == 0 {
+		np = minGPU
+	}
 
 	config := JobConfig{
+		NP:     np,
 		MinGPU: minGPU,
 		MaxGPU: maxGPU,
 		Epochs: epochs,

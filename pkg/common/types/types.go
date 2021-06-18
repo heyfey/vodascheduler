@@ -9,8 +9,9 @@ package types
 type JobConfigType string
 
 const (
-	// MIN_NP and MAX_NP are used to specified the minimum and maximum number
+	// NP, MIN_NP and MAX_NP are used to specified the requested, minimum and maximum number
 	// of processes to run with during the training job
+	JobNP    JobConfigType = "NP"
 	JobMinNP JobConfigType = "MIN_NP"
 	JobMaxNP JobConfigType = "MAX_NP"
 

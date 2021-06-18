@@ -17,6 +17,8 @@ spec:
             env:
               - name: JOB_NAME
                 value: "tensorflow2-keras-mnist-elastic"
+              - name: NP
+                value: "1"
               - name: MIN_NP
                 value: "1"
               - name: MAX_NP
@@ -27,7 +29,7 @@ spec:
             args:
             - mkdir -p /outputs/$(JOB_NAME);
               horovodrun
-              -np 1
+              -np $(NP)
               --min-np $(MIN_NP)
               --max-np $(MAX_NP)
               --host-discovery-script /etc/mpi/discover_hosts.sh
