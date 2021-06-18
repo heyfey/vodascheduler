@@ -53,3 +53,7 @@ func (a *SRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	validateResult(a.totalGPU, result, jobs)
 	return result
 }
+
+func (a *SRJF) GetName() string {
+	return a.algorithm
+}

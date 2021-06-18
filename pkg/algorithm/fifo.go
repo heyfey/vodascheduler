@@ -53,3 +53,7 @@ func (a *FIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	validateResult(a.totalGPU, result, jobs)
 	return result
 }
+
+func (a *FIFO) GetName() string {
+	return a.algorithm
+}

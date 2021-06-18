@@ -75,3 +75,7 @@ func (a *ElasticSRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 	validateResult(a.totalGPU, result, jobs)
 	return result
 }
+
+func (a *ElasticSRJF) GetName() string {
+	return a.algorithm
+}

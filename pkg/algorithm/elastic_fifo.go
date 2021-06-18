@@ -75,3 +75,7 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 	validateResult(a.totalGPU, result, jobs)
 	return result
 }
+
+func (a *ElasticFIFO) GetName() string {
+	return a.algorithm
+}
