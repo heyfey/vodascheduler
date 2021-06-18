@@ -7,7 +7,28 @@ import (
 
 	"github.com/heyfey/celeste/pkg/common/types"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
+	// "github.com/prometheus/client_golang/prometheus"
 )
+
+// JobMetrics represents metrics of a job.
+type JobMetrics struct {
+	Name        string `bson:"name" json:"name"`
+	LastUpdated time.Time
+
+	RunningTime time.Duration
+	WaitingTime time.Duration
+	GpuTime     time.Duration
+	TotalTime   time.Duration
+
+	LastRunningTime time.Duration
+	LastWaitingTime time.Duration
+	LastGpuTime     time.Duration
+
+	// Preemption times of the job.
+	// Preemptions prometheus.Counter
+	// Number of GPUs for the job.
+	// workers prometheus.Gauge
+}
 
 // TrainingJob represents a single training job in the queue
 type TrainingJob struct {
@@ -87,4 +108,37 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 		// Priority:      1,
 	}
 	return t, nil
+}
+
+func NewJobMetrics(name string) *JobMetrics {
+	// preemptions := prometheus.NewCounter(prometheus.CounterOpts{
+	// 	Namespace: name,
+	// 	Subsystem: "celeste",
+	// 	Name:      "preemptions",
+	// 	Help:      "Preemption times of the job.",
+	// })
+	// prometheus.MustRegister(preemptions)
+
+	// workers := prometheus.NewGauge(prometheus.GaugeOpts{
+	// 	Namespace: name,
+	// 	Subsystem: "celeste",
+	// 	Name:      "workers",
+	// 	Help:      "Number of GPUs of the job.",
+	// })
+	// prometheus.MustRegister(workers)
+
+	m := &JobMetrics{
+		Name:            name,
+		LastUpdated:     time.Now(),
+		RunningTime:     0,
+		WaitingTime:     0,
+		GpuTime:         0,
+		TotalTime:       0,
+		LastRunningTime: 0,
+		LastWaitingTime: 0,
+		LastGpuTime:     0,
+		// Preemptions: preemptions,
+		// workers:     workers,
+	}
+	return m
 }

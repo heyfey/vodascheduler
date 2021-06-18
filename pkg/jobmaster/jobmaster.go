@@ -145,6 +145,7 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	sched.JobMPIJobs[jobName] = mpijob
 	sched.JobNumGPU[jobName] = 0
 	sched.JobStatuses[jobName] = types.JobWaiting
+	sched.JobMetrics[jobName] = trainingjob.NewJobMetrics(jobName)
 	sched.Queue.Enqueue(*t)
 	sched.SchedulerLock.Unlock()
 
@@ -258,6 +259,7 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	delete(sched.JobMPIJobs, jobName)
 	delete(sched.JobNumGPU, jobName)
 	delete(sched.JobStatuses, jobName)
+	delete(sched.JobMetrics, jobName)
 	err := sched.Queue.Delete(jobName)
 	if err != nil {
 		log.Info("Deleting a completed job", "job", jobName)
@@ -284,14 +286,14 @@ func (jm *JobMaster) GetTrainingJob(jobName string) error {
 
 // GetAllTrainingJob lists all training jobs and their scheduler, status, and waiting/running/total time
 func (jm *JobMaster) GetAllTrainingJob() string {
-	result := fmt.Sprintf("%-60s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER")
+	result := fmt.Sprintf("%-60s %-10s %-10s %-10s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER", "WAITING", "RUNNING", "TOTAL")
 
 	for _, scheduler := range jm.schedulers {
 		buffer := make([]string, 0)
 
 		scheduler.SchedulerLock.RLock()
 		for job, status := range scheduler.JobStatuses {
-			str := fmt.Sprintf("%-60s %-10s %-10d %-10s\n", job, string(status), scheduler.JobNumGPU[job], scheduler.SchedulerID)
+			str := fmt.Sprintf("%-60s %-10s %-10d %-10s %-10s %-10s %-10s\n", job, string(status), scheduler.JobNumGPU[job], scheduler.SchedulerID, scheduler.JobMetrics[job].WaitingTime.Round(time.Second), scheduler.JobMetrics[job].RunningTime.Round(time.Second), scheduler.JobMetrics[job].TotalTime.Round(time.Second))
 			buffer = append(buffer, str)
 		}
 		scheduler.SchedulerLock.RUnlock()

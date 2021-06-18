@@ -8,6 +8,7 @@ import (
 	"github.com/heyfey/celeste/pkg/algorithm"
 	"github.com/heyfey/celeste/pkg/common/logger"
 	"github.com/heyfey/celeste/pkg/common/mongo"
+	"github.com/heyfey/celeste/pkg/common/trainingjob"
 	"github.com/heyfey/celeste/pkg/common/types"
 	kubeflowcommon "github.com/kubeflow/common/pkg/apis/common/v1"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
@@ -28,6 +29,8 @@ const (
 	// Number of GPUs of this scheduler
 	// TODO: should be user specified or discover in runtime
 	gpus = 8
+
+	rateLimitTimeMetricsSeconds = 5
 )
 
 // type SchedulerMetrics struct {
@@ -45,6 +48,7 @@ type Scheduler struct {
 	JobNumGPU types.JobScheduleResult
 	// Status of each training job. "Running", "Waiting", "Failed" or "Completed"
 	JobStatuses map[string]types.JobStatusType
+	JobMetrics  map[string]*trainingjob.JobMetrics
 	// SchedulerLock is used to protect Queue, JobMPIJobs, JobNumGPU and JobStatuses
 	SchedulerLock sync.RWMutex
 
@@ -82,6 +86,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		JobMPIJobs:      map[string]*kubeflowv1.MPIJob{},
 		JobNumGPU:       map[string]int{},
 		JobStatuses:     map[string]types.JobStatusType{},
+		JobMetrics:      map[string]*trainingjob.JobMetrics{},
 		SchedulerLock:   sync.RWMutex{},
 		Algorithm:       algorithm.NewFIFO(gpus, id), // TODO
 		ReschedCh:       make(chan time.Time, reschedChannelSize),
@@ -101,6 +106,7 @@ func (s *Scheduler) Run() {
 
 	// defer close channels ..?
 	go s.watchingMPIJobModified()
+	go s.updateTimeMetrics()
 
 	for {
 		select {
@@ -246,6 +252,9 @@ func (s *Scheduler) startTrainingJobMany(jobs ...string) {
 			log.Error(err, "Could not start training job, this should not happen", "job", job, "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
 			// https://github.com/kubeflow/mpi-operator/blob/master/pkg/controllers/v1/mpi_job_controller.go#L875
 		}
+		// reset time metrics
+		s.JobMetrics[job].LastGpuTime = 0
+		s.JobMetrics[job].LastRunningTime = 0
 
 		log.V(5).Info("Training job started", "job", job, "scheduler", s.SchedulerID)
 	}
@@ -328,6 +337,8 @@ func (s *Scheduler) haltTrainingJobMany(jobs ...string) {
 			log.Error(err, "Could not delete training job, this should not happen", "job", job, "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
 			// TODO: error handling if not delete
 		}
+		// reset time metrics
+		s.JobMetrics[job].LastWaitingTime = 0
 
 		log.V(5).Info("Training job deleted", "job", job, "scheduler", s.SchedulerID)
 	}
@@ -440,4 +451,29 @@ func (s *Scheduler) handleJobFailed(job string) {
 func (s *Scheduler) Stop() {
 	s.StopSchedulerCh <- time.Now()
 	return
+}
+
+// updateTimeMetrics updates time metrics of all training jobs every rateTimeMetricsSeconds seconds.
+func (s *Scheduler) updateTimeMetrics() {
+	for {
+		time.Sleep(time.Duration(rateLimitTimeMetricsSeconds) * time.Second)
+
+		s.SchedulerLock.Lock()
+		for job, status := range s.JobStatuses {
+			elasped := time.Since(s.JobMetrics[job].LastUpdated)
+			if status == types.JobRunning {
+				s.JobMetrics[job].RunningTime += elasped
+				s.JobMetrics[job].GpuTime += elasped * time.Duration(s.JobNumGPU[job])
+				s.JobMetrics[job].TotalTime += elasped
+				s.JobMetrics[job].LastRunningTime += elasped
+				s.JobMetrics[job].LastGpuTime += elasped * time.Duration(s.JobNumGPU[job])
+			} else if status == types.JobWaiting {
+				s.JobMetrics[job].WaitingTime += elasped
+				s.JobMetrics[job].TotalTime += elasped
+				s.JobMetrics[job].LastWaitingTime += elasped
+			}
+			s.JobMetrics[job].LastUpdated = time.Now()
+		}
+		s.SchedulerLock.Unlock()
+	}
 }
