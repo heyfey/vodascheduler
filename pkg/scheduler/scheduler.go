@@ -453,7 +453,7 @@ func (s *Scheduler) Stop() {
 	return
 }
 
-// updateTimeMetrics updates time metrics of all training jobs every rateTimeMetricsSeconds seconds.
+// updateTimeMetrics updates time metrics of all training jobs every rateLimitTimeMetricsSeconds seconds.
 func (s *Scheduler) updateTimeMetrics() {
 	for {
 		time.Sleep(time.Duration(rateLimitTimeMetricsSeconds) * time.Second)
