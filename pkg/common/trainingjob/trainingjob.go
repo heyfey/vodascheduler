@@ -38,7 +38,7 @@ type TrainingJob struct {
 	Submitted     time.Time `bson:"submitted" json:"submitted"`
 	Config        JobConfig `bson:"config" json:"config"`
 	Info          JobInfo   `bson:"info" json:"info"`
-	// Priority      int
+	Priority      int
 }
 
 // JobConfig represents user training configurations specified by user
@@ -105,7 +105,7 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 		Submitted:     submitted,
 		Config:        config,
 		Info:          info,
-		// Priority:      1,
+		Priority:      0,
 	}
 	return t, nil
 }
