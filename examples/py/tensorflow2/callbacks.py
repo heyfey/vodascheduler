@@ -52,6 +52,7 @@ class MetricsCSVLogger(Callback):
     self.append_header = True
 
     self.verbose = verbose
+    self.epoch = 0
     self.total_epochs = total_epochs
 
     # Get latest epoch from .csv, and track the epoch by increasing self.epoch 
@@ -62,8 +63,6 @@ class MetricsCSVLogger(Callback):
         rows = csv.DictReader(f)
         for row in rows:
           self.epoch = int(row['epoch']) + 1
-    else:
-      self.epoch = 0
     
     self.params = {}
     if six.PY2:
