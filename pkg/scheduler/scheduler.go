@@ -499,7 +499,7 @@ func (s *Scheduler) updateTimeMetrics() {
 			s.JobMetrics[job].LastUpdated = time.Now()
 
 			// Tiresias' rules of priority changes
-			if s.Algorithm.GetName() == "Tiresias" && (status == types.JobRunning || status == types.JobWaiting) {
+			if (s.Algorithm.GetName() == "Tiresias" || s.Algorithm.GetName() == "ElasticTiresias") && (status == types.JobRunning || status == types.JobWaiting) {
 				t, err := s.Queue.Get(job)
 				if err != nil {
 					log.Error(err, "This should not happen", "job", job, "scheduler", s.SchedulerID)
