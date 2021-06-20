@@ -256,6 +256,13 @@ func (s *Scheduler) startTrainingJobMany(jobs ...string) {
 		s.JobMetrics[job].LastGpuTime = 0
 		s.JobMetrics[job].LastRunningTime = 0
 
+		// set Trainingjob.FirstStarted if the job is first started
+		if s.JobMetrics[job].RunningTime == 0 {
+			if t, err := s.Queue.Get(job); err != nil {
+				t.FirstStarted = time.Now()
+			}
+		}
+
 		log.V(5).Info("Training job started", "job", job, "scheduler", s.SchedulerID)
 	}
 }
@@ -453,10 +460,20 @@ func (s *Scheduler) Stop() {
 	return
 }
 
-// updateTimeMetrics updates time metrics of all training jobs every rateLimitTimeMetricsSeconds seconds.
+// updateTimeMetrics updates time metrics of all training jobs every
+// rateLimitTimeMetricsSeconds seconds.
+// Depends on the scheduling algorithm, it may also checks for priority changes
+// and/or triggers resched.
 func (s *Scheduler) updateTimeMetrics() {
+	log := logger.GetLogger()
+	defer logger.Flush()
+
 	for {
 		time.Sleep(time.Duration(rateLimitTimeMetricsSeconds) * time.Second)
+
+		// some algorithms change priority of training jobs according to time metrics,
+		// and may trigger resched if that happens.
+		priorityChanged := false
 
 		s.SchedulerLock.Lock()
 		for job, status := range s.JobStatuses {
@@ -473,7 +490,34 @@ func (s *Scheduler) updateTimeMetrics() {
 				s.JobMetrics[job].LastWaitingTime += elasped
 			}
 			s.JobMetrics[job].LastUpdated = time.Now()
+
+			// Tiresias' rules of priority changes
+			if s.Algorithm.GetName() == "Tiresias" && (status == types.JobRunning || status == types.JobWaiting) {
+				t, err := s.Queue.Get(job)
+				if err != nil {
+					log.Error(err, "This should not happen", "job", job, "scheduler", s.SchedulerID)
+					continue
+				}
+				// demote the job if last GPU time crosses threshold
+				if s.JobMetrics[job].LastGpuTime.Seconds() > algorithm.TiresiasThresholdsSec[t.Priority] {
+					t.Priority = algorithm.TiresiasDemotePriority(t.Priority)
+					priorityChanged = true
+					log.V(4).Info("Priority demoted to training job", "job", job, "priority", t.Priority, "scheduler", s.SchedulerID)
+
+					// promote the job if last waiting time longer than STARVELIMIT
+				} else if s.JobMetrics[job].LastWaitingTime.Seconds() >= s.JobMetrics[job].LastRunningTime.Seconds()*float64(algorithm.TiresiasPromoteKnob) && t.Priority > 0 {
+					t.Priority = algorithm.TiresiasPromotePriority(t.Priority)
+					priorityChanged = true
+					log.V(4).Info("Priority promoted to training job", "job", job, "priority", t.Priority, "scheduler", s.SchedulerID)
+				}
+			}
 		}
 		s.SchedulerLock.Unlock()
+
+		// trigger resched if priority changed
+		if priorityChanged {
+			log.V(3).Info("Priority changed", "scheduler", s.SchedulerID)
+			s.ReschedCh <- time.Now()
+		}
 	}
 }

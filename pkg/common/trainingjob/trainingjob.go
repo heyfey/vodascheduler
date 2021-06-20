@@ -39,6 +39,9 @@ type TrainingJob struct {
 	Config        JobConfig `bson:"config" json:"config"`
 	Info          JobInfo   `bson:"info" json:"info"`
 	Priority      int
+
+	// first started/scheduled time of the training job, used in Tiresias algorithm
+	FirstStarted time.Time
 }
 
 // JobConfig represents user training configurations specified by user
@@ -118,6 +121,7 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 		Config:        config,
 		Info:          info,
 		Priority:      0,
+		FirstStarted:  types.MaxTime,
 	}
 	return t, nil
 }

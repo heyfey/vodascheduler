@@ -2,6 +2,8 @@
 
 package types
 
+import "time"
+
 // JobConfigType represents the job arguments required by the system
 // Users are required to specify these arguments by environment variables in the yaml
 // see example at:
@@ -48,3 +50,7 @@ const (
 // TODO: Considering rename to JobAllocateResult
 // (JobAllocateResult + JobPlacementResult = JobScheduleResult)
 type JobScheduleResult map[string]int
+
+// https://stackoverflow.com/questions/25065055/what-is-the-maximum-time-time-in-go/32620397#32620397
+// MaxTime should not be modify by anyone.
+var MaxTime time.Time = time.Unix(1<<63-62135596801, 999999999)
