@@ -394,7 +394,10 @@ func (s *Scheduler) watchingMPIJobModified() {
 			// get current phase from the last element of Conditions
 			// TODO: determine phase using existing api
 			// https://github.com/kubeflow/mpi-operator/blob/6ee71d45dde0e71229b7fa91065e0c6bb503cd92/pkg/controllers/v1/mpi_job_controller_status.go#L86
-			last := len(m.Status.Conditions) - 1 // beware of runtime error
+			last := len(m.Status.Conditions) - 1
+			if last < 0 {
+				continue
+			}
 			phase := m.Status.Conditions[last].Type
 			name := m.GetName()
 			if phase == kubeflowcommon.JobSucceeded {
