@@ -129,8 +129,12 @@ func (s *Scheduler) resched() {
 	s.SchedulerLock.Lock()
 	oldJobNumGPU := s.JobNumGPU
 	s.updateAllJobsInfoFromDB()
-	s.JobNumGPU = s.Algorithm.Schedule(s.Queue.Queue)
+
+	queueCopied := make(algorithm.ReadyJobs, s.Queue.Size())
+	copy(queueCopied, s.Queue.Queue)
+	s.JobNumGPU = s.Algorithm.Schedule(queueCopied)
 	// s.SchedulerLock.Unlock() // may want to unlock here to implement cancelling mechanism
+
 	s.applySchedulerResults(oldJobNumGPU)
 	s.recordRunningJobsInDB()
 	s.SchedulerLock.Unlock()
