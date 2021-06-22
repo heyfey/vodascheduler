@@ -29,7 +29,7 @@ spec:
             args:
             - mkdir -p /outputs/$(JOB_NAME);
               horovodrun
-              -np $(NP)
+              -np $(MIN_NP) # This is intended because horovod cannot start elastic training with min_np if min_np < np
               --min-np $(MIN_NP)
               --max-np $(MAX_NP)
               --host-discovery-script /etc/mpi/discover_hosts.sh
