@@ -31,6 +31,7 @@ const (
 	gpus = 8
 
 	rateLimitTimeMetricsSeconds = 5
+	reschedRateLimitSeconds     = 30
 )
 
 // type SchedulerMetrics struct {
@@ -59,6 +60,9 @@ type Scheduler struct {
 	ReschedCh       chan time.Time
 	StopSchedulerCh chan time.Time
 
+	lastResched         time.Time
+	reschedBlockedUntil time.Time
+
 	session  *mgo.Session
 	database string
 	// metrics       *SchedulerMetrics
@@ -79,20 +83,26 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 	// TODO: find GPUAvailable
 
 	s := &Scheduler{
-		SchedulerID:     id,
-		GPUAvailable:    gpus, // TODO
-		mpiClient:       c,
-		Queue:           q,
-		JobMPIJobs:      map[string]*kubeflowv1.MPIJob{},
-		JobNumGPU:       map[string]int{},
-		JobStatuses:     map[string]types.JobStatusType{},
-		JobMetrics:      map[string]*trainingjob.JobMetrics{},
-		SchedulerLock:   sync.RWMutex{},
-		Algorithm:       algorithm.NewFIFO(gpus, id), // TODO
-		ReschedCh:       make(chan time.Time, reschedChannelSize),
-		StopSchedulerCh: make(chan time.Time),
-		session:         session,
-		database:        database,
+		SchedulerID:  id,
+		GPUAvailable: gpus, // TODO
+		mpiClient:    c,
+
+		Queue:         q,
+		JobMPIJobs:    map[string]*kubeflowv1.MPIJob{},
+		JobNumGPU:     map[string]int{},
+		JobStatuses:   map[string]types.JobStatusType{},
+		JobMetrics:    map[string]*trainingjob.JobMetrics{},
+		SchedulerLock: sync.RWMutex{},
+
+		Algorithm: algorithm.NewFIFO(gpus, id), // TODO
+
+		ReschedCh:           make(chan time.Time, reschedChannelSize),
+		StopSchedulerCh:     make(chan time.Time),
+		reschedBlockedUntil: time.Now(),
+		lastResched:         time.Now(),
+
+		session:  session,
+		database: database,
 	}
 	return s, nil
 }
@@ -110,11 +120,23 @@ func (s *Scheduler) Run() {
 
 	for {
 		select {
-		case _ = <-s.ReschedCh:
-			// TODO: only need to perform one resched even if there are more than one elements in the channel
-			// TODO: check timestamp
-			// if r ...
-			s.resched()
+		case r := <-s.ReschedCh:
+			if r.After(s.lastResched) {
+				log.V(4).Info("Received resched event, may be blocked because of rate limit", "scheduler", s.SchedulerID,
+					"received", r, "lastResched", s.lastResched, "blockedUntil", s.reschedBlockedUntil)
+
+				for time.Now().Before(s.reschedBlockedUntil) {
+					time.Sleep(2)
+				}
+				s.resched()
+				s.lastResched = time.Now()
+				s.reschedBlockedUntil = s.lastResched.Add(time.Second * reschedRateLimitSeconds)
+			} else {
+				// The resched events with timestamp before s.lastResched are
+				// considered sastified, simply ignore them.
+				log.V(5).Info("Ignored resched event", "scheduler", s.SchedulerID, "received", r)
+			}
+
 		case _ = <-s.StopSchedulerCh:
 			return
 		}
