@@ -428,7 +428,11 @@ func (s *Scheduler) handleJobCompleted(job string) {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	log.Info("Training job completed", "job", job, "scheduler", s.SchedulerID)
+	log.Info("Training job completed", "job", job, "scheduler", s.SchedulerID,
+		"waitedTotalSeconds", s.JobMetrics[job].WaitingTime.Seconds(),
+		"ranTotalSeconds", s.JobMetrics[job].RunningTime.Seconds(),
+		"gpuTotalSeconds", s.JobMetrics[job].GpuTime.Seconds(),
+		"elaspedTotalSeconds", s.JobMetrics[job].TotalTime.Seconds())
 
 	s.JobStatuses[job] = types.JobCompleted
 	s.Queue.Delete(job)
