@@ -2,6 +2,8 @@ package logger
 
 import (
 	"flag"
+	"path"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/klog/v2"
@@ -10,9 +12,13 @@ import (
 
 // Constants for logging
 const (
-	Name            = "Celeste"
-	User            = "heyfey"
-	LogPath         = "/home/heyfey/celeste/celeste/logs/my_file.log" // TODO: replace this
+	Name = "Celeste"
+	User = "heyfey"
+
+	// TODO: replace these
+	LogDir  = "/home/heyfey/celeste/celeste/logs"
+	LogName = "my_file"
+
 	LogToStderr     = "false"
 	AlsoLogtoStderr = "true"
 	V               = "5"
@@ -28,9 +34,12 @@ const (
 
 // InitLogger initializes logger with constants for logging
 func InitLogger() {
+	logName := LogName + "-" + time.Now().Format("20060102-030405") + ".log"
+	logPath := path.Join(LogDir, logName)
+
 	klog.InitFlags(nil)
 	flag.Set("v", V)
-	flag.Set("log_file", LogPath)
+	flag.Set("log_file", logPath)
 	flag.Set("logtostderr", LogToStderr)
 	flag.Set("alsologtostderr", AlsoLogtoStderr)
 	flag.Parse()
