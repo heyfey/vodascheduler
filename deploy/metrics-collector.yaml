@@ -20,3 +20,7 @@ spec:
               persistentVolumeClaim:
                 claimName: celeste-pvc-metrics
           restartPolicy: Never
+          tolerations:
+          - key: "celeste/hostname"
+            operator: "Exists"
+            effect: "NoExecute"

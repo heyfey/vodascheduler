@@ -17,6 +17,10 @@ spec:
   - name: mongo-data
     persistentVolumeClaim:
       claimName: celeste-pvc-mongodb
+  tolerations:
+  - key: "celeste/hostname"
+    operator: "Exists"
+    effect: "NoExecute"
 ---
 apiVersion: v1
 kind: Service
