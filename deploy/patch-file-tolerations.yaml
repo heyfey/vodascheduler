@@ -1,0 +1,7 @@
+spec:
+  template:
+    spec:
+      tolerations:
+      - key: "celeste/hostname" 
+        operator: "Exists"
+        effect: "NoExecute"
