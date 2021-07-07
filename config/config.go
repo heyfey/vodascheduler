@@ -6,4 +6,5 @@ const (
 	Version    = "0.0.1"
 	Port       = "10000"
 	EntryPoint = "/training"
+	TaintKey   = "celeste/hostname"
 )

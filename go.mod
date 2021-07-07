@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/go-logr/logr v0.1.0
 	github.com/gorilla/mux v1.8.0
+	github.com/heyfey/munkres v0.0.0-20210705070356-d4f16a25250d
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/kubeflow/common v0.3.3
 	github.com/kubeflow/mpi-operator v0.2.4-0.20210421114141-298b527bb033

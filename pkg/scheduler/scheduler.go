@@ -10,6 +10,7 @@ import (
 	"github.com/heyfey/celeste/pkg/common/mongo"
 	"github.com/heyfey/celeste/pkg/common/trainingjob"
 	"github.com/heyfey/celeste/pkg/common/types"
+	"github.com/heyfey/celeste/pkg/placement"
 	kubeflowcommon "github.com/kubeflow/common/pkg/apis/common/v1"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
 	client "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned/typed/kubeflow/v1"
@@ -66,6 +67,8 @@ type Scheduler struct {
 	session  *mgo.Session
 	database string
 	// metrics       *SchedulerMetrics
+
+	PlacementManager *placement.PlacementManager
 }
 
 // NewScheduler creates a new scheduler
@@ -81,6 +84,11 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 	}
 
 	// TODO: find GPUAvailable
+
+	pm, err := placement.NewPlacementManager(id, config)
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Scheduler{
 		SchedulerID:  id,
@@ -103,6 +111,8 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 
 		session:  session,
 		database: database,
+
+		PlacementManager: pm,
 	}
 	return s, nil
 }
@@ -162,6 +172,10 @@ func (s *Scheduler) resched() {
 	s.SchedulerLock.Unlock()
 
 	log.V(3).Info("Finished resched", "scheduler", s.SchedulerID)
+
+	s.SchedulerLock.RLock()
+	s.PlacementManager.Place(s.JobNumGPU)
+	s.SchedulerLock.RUnlock()
 }
 
 // updateAllJobsInfoFromDB finds information of all training jobs in mongodb
