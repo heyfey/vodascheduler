@@ -175,12 +175,10 @@ func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
 	pm.bestFit(jobRequests, schedulableNodesList)
 	pm.bindNodes(schedulableNodesList)
 	pm.updateJobStates()
-
-	oldPodNodeName := pm.podNodeName
-	pm.updatePodNodeName()
+	deletingPodList := pm.updatePodNodeName()
 	pm.placementLock.Unlock()
 
-	pm.deletePodsToMigrate(oldPodNodeName)
+	pm.deletePods(deletingPodList)
 }
 
 // releaseSlots releases spare slots for the jobs had been scaled down or
@@ -390,53 +388,70 @@ func (pm *PlacementManager) updateJobStates() {
 	pm.jobStates = newJobStates
 }
 
-// updatePodNodeName constructs a new podNodeName according to jobStates and
-// replaces the original one.
-func (pm *PlacementManager) updatePodNodeName() {
+// updatePodNodeName 1. constructs a new podNodeName according to jobStates and
+// replaces the original one. 2. returns a list of pods whose node was changed
+// thus need migration.
+func (pm *PlacementManager) updatePodNodeName() []podName {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
 	newPodNodeName := make(map[podName]nodeName)
+
+	deletingPodList := make([]podName, 0) // pods to be deleted to perform migrations
+	deletedWorkers := 0
+	deletedLaunchers := 0
+
 	for _, job := range pm.jobStates {
 		idx := 0
+		deleted := 0
 		for _, hs := range job.nodeSlotsList {
 			for i := 0; i < hs.slots; i++ {
-				podName := getWorkerPodName(job.name, idx)
-				newPodNodeName[podName] = hs.node
-				log.V(5).Info("Updating podNodeName", "job", job.name, "index", idx,
-					"podName", podName, "nodeName", hs.node, "scheduler", pm.SchedulerID)
+				pod := getWorkerPodName(job.name, idx)
+
+				log.V(5).Info("Updating podNodeName", "podName", pod,
+					"nodeName", hs.node, "scheduler", pm.SchedulerID)
+
+				// determine if the pod need to be deleted
+				oldNode, ok := pm.podNodeName[pod]
+				if ok && hs.node != oldNode {
+					deletingPodList = append(deletingPodList, pod)
+					deleted++
+					deletedWorkers++
+
+					log.V(5).Info("Found worker pod need migration", "podName", pod,
+						"from", oldNode, "to", hs.node, "scheduler", pm.SchedulerID)
+				}
+				newPodNodeName[pod] = hs.node
 				idx++
 			}
 		}
+		if deleted == job.workers {
+			deletingPodList = append(deletingPodList, getLauncherPodName(job.name))
+			deletedLaunchers++
+		}
 	}
-	log.V(4).Info("podNodeName updated", "old", pm.podNodeName, "new", newPodNodeName, "scheduler", pm.SchedulerID)
+	log.V(4).Info("podNodeName updated", "old", pm.podNodeName, "new", newPodNodeName,
+		"workersToDelete", deletedWorkers, "launchersToDelete", deletedLaunchers,
+		"scheduler", pm.SchedulerID)
 
 	pm.podNodeName = newPodNodeName
+
+	return deletingPodList
 }
 
-// deletePodsToMigrate compares podNodeName and deletes the pods whiches node
-// was changed. The deleted pods will be re-created by the MPIJob controller,
-// and toleration will be added by the informer callbacks of the placement manager.
-func (pm *PlacementManager) deletePodsToMigrate(old map[podName]nodeName) {
+// deletePods deletes pods.
+// The deleted pods will be re-created by the MPIJob controller, and tolerations
+// will be added to pods by the informer callbacks of the placement manager.
+func (pm *PlacementManager) deletePods(podList []podName) {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
-	migrations := 0
-	defer log.V(4).Info("Finished deleting pods", "migrations", migrations, "scheduler", pm.SchedulerID)
+	for _, pod := range podList {
+		log.V(4).Info("Deleting pod that need migration", "podName", pod, "scheduler", pm.SchedulerID)
 
-	pm.placementLock.RLock()
-	for pod, oldNode := range old {
-		newNode, ok := pm.podNodeName[pod]
-		if ok && oldNode != newNode {
-			log.V(4).Info("Deleting pod that need migration", "podName", pod,
-				"from", oldNode, "to", newNode, "scheduler", pm.SchedulerID)
-
-			err := pm.kClient.CoreV1().Pods("default").Delete(string(pod), &metav1.DeleteOptions{}) // TODO: set namespace
-			if err != nil {
-				log.Error(err, "Failed to delete pod", "podName", pod, "scheduler", pm.SchedulerID) // TODO: error handling
-			}
-			migrations++
+		err := pm.kClient.CoreV1().Pods("default").Delete(string(pod), &metav1.DeleteOptions{}) // TODO: set namespace
+		if err != nil {
+			log.Error(err, "Failed to delete pod", "podName", pod, "scheduler", pm.SchedulerID) // TODO: error handling
 		}
 	}
-	pm.placementLock.RUnlock()
 }

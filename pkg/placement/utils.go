@@ -16,8 +16,12 @@ const (
 	labelMPIRoleType = "mpi-job-role"
 )
 
+func getLauncherPodName(name string) podName {
+	return podName(fmt.Sprintf("%s-%s", name, launcher))
+}
+
 func getWorkerPodName(name string, idx int) podName {
-	return podName(fmt.Sprintf("%s-%s-%d", name, "worker", idx))
+	return podName(fmt.Sprintf("%s-%s-%d", name, worker, idx))
 }
 
 func isMPIJobLauncher(pod *corev1.Pod) bool {
