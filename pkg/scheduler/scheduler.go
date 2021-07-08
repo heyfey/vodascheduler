@@ -157,6 +157,7 @@ func (s *Scheduler) resched() {
 	log := logger.GetLogger()
 	defer logger.Flush()
 	log.V(3).Info("Started resched", "scheduler", s.SchedulerID)
+	defer log.V(3).Info("Finished resched", "scheduler", s.SchedulerID)
 
 	s.SchedulerLock.Lock()
 	oldJobNumGPU := s.JobNumGPU
@@ -167,15 +168,17 @@ func (s *Scheduler) resched() {
 	s.JobNumGPU = s.Algorithm.Schedule(queueCopied)
 	// s.SchedulerLock.Unlock() // may want to unlock here to implement cancelling mechanism
 
-	s.applySchedulerResults(oldJobNumGPU)
-	s.recordRunningJobsInDB()
+	adjusted := s.applySchedulerResults(oldJobNumGPU)
 	s.SchedulerLock.Unlock()
 
-	log.V(3).Info("Finished resched", "scheduler", s.SchedulerID)
-
-	s.SchedulerLock.RLock()
-	s.PlacementManager.Place(s.JobNumGPU)
-	s.SchedulerLock.RUnlock()
+	if adjusted {
+		s.SchedulerLock.RLock()
+		s.recordRunningJobsInDB()
+		s.PlacementManager.Place(s.JobNumGPU)
+		s.SchedulerLock.RUnlock()
+	} else {
+		log.V(3).Info("Nothing changed, skipped ajust placements", "scheduler", s.SchedulerID)
+	}
 }
 
 // updateAllJobsInfoFromDB finds information of all training jobs in mongodb
@@ -237,14 +240,18 @@ func (s *Scheduler) recordRunningJobsInDB() error {
 }
 
 // applySchedulerResults performs required changes to achieve new JobScheduleResult
-func (s *Scheduler) applySchedulerResults(oldResult map[string]int) {
+// and returns if there is any change has been made.
+func (s *Scheduler) applySchedulerResults(oldResult map[string]int) bool {
 	halts, scaleIns, scaleOuts, starts := s.compareResults(oldResult)
+	changes := len(halts) + len(scaleIns) + len(scaleOuts) + len(starts)
 	s.haltTrainingJobMany(halts...)
 	s.scaleTrainingJobMany(scaleIns...)
 	// (optinal) wait for ajustments complete
 	s.startTrainingJobMany(starts...)
 	s.scaleTrainingJobMany(scaleOuts...)
 	// (optinal) wait for ajustments complete
+
+	return changes != 0
 }
 
 // compareResults compares old and new JobScheduleResult to find required changes
