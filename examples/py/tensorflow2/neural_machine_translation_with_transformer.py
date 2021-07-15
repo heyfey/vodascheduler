@@ -17,6 +17,82 @@ from tensorflow.keras import layers
 from keras.layers.experimental.preprocessing import TextVectorization
 import layers_tf25
 
+import os
+import horovod.tensorflow.keras as hvd
+from callbacks import MetricsCSVLogger, set_logger_params
+from argparse import ArgumentParser
+
+
+parser = ArgumentParser(description='Celeste tf.keras Transformer Example')
+parser.add_argument("--name"              , dest ="job_name", type=str, default='', help="unique name to identify training job (default: file name)")
+parser.add_argument("--data-dir"          , dest ="d_dir", type=str, default='./', help="path to dataset")
+parser.add_argument("--store-dir"         , dest ="s_dir", type=str, default='./', help="path to outputs (checkpoint)")
+parser.add_argument("--metrics-dir"       , dest ="m_dir", type=str, default='./', help="path to metrics")
+parser.add_argument('--checkpoint-format' , dest ="checkpoint_format", type=str, default='checkpoint.h5', help='checkpoint file format')
+
+parser.add_argument("--lr"                , dest ="lr", type=float, default=0.001, help="base learning rate for a single GPU")
+parser.add_argument("--batch-size"        , dest ="batch_size", type=int, default=512, help="local batch size")
+parser.add_argument("--epochs"            , dest ="epochs", type=int, default=30, help="number of epochs to train")
+parser.add_argument('--fp16-allreduce'    , dest ="fp16_allreduce", action='store_true', default=False, help='use fp16 compression during allreduce')
+parser.add_argument('--warmup-epochs'     , dest ="warmup_epochs", type=int, default=0, help='number of warmup epochs')
+parser.add_argument('--batches-per-commit', dest ="batches_per_commit", type=int, default=100, help='commit state every # batches')
+
+args = parser.parse_args()
+
+# set and print hyper-parameters
+job_name           = args.job_name
+dataset_dir        = args.d_dir
+store_dir          = args.s_dir
+metrics_dir        = args.m_dir
+checkpoint_format  = args.checkpoint_format
+batch_size         = args.batch_size
+base_lr            = args.lr
+epochs             = args.epochs
+fp16_allreduce     = args.fp16_allreduce
+warmup_epochs      = args.warmup_epochs
+batches_per_commit = args.batches_per_commit
+
+print('[TFver] tf version: {:s}'.format(tf.__version__) )
+print('[param] Listing hyper-parameters...')
+print('[param] job_name : {:s}'.format(job_name) )
+print('[param] dataset_dir : {:s}'.format(dataset_dir) )
+print('[param] store_dir : {:s}'.format(store_dir) )
+print('[param] metrics_dir : {:s}'.format(metrics_dir) )
+print('[param] checkpoint_format : {:s}'.format(checkpoint_format) )
+print('[param] batch_size: {:d}'.format(batch_size) )
+print('[param] base_lr: {:f}'.format(base_lr) )
+print('[param] epochs: {:d}'.format(epochs) )
+print('[param] fp16-allreduce: {}'.format(fp16_allreduce) )
+print('[param] warmup_epochs: {:d}'.format(warmup_epochs) )
+print('[param] batches_per_commit: {:d}'.format(batches_per_commit) )
+
+# Set job_name as filename if not specified.
+if not job_name:
+    job_name = os.path.basename(__file__)
+    job_name = os.path.splitext(job_name)[0]
+    print("[Warnning] missing job_name, using file name as job_name: {:s}".format(job_name))
+metrics_path = os.path.join(metrics_dir, job_name + '.csv')
+
+checkpoint_path = os.path.join(store_dir, checkpoint_format)
+
+# Horovod: initialize Horovod.
+hvd.init()
+
+# Horovod: pin GPU to be used to process local rank (one GPU per process)
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+if gpus:
+    tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
+
+# For dataset
+vocab_size = 15000
+sequence_length = 20
+# For model
+embed_dim = 256
+latent_dim = 2048
+num_heads = 8
+
 ## Downloading the data
 # We'll be working with an English-to-Spanish translation dataset
 # provided by [Anki](https://www.manythings.org/anki/). Let's download it:
@@ -50,14 +126,16 @@ print(f"{len(train_pairs)} training pairs")
 print(f"{len(val_pairs)} validation pairs")
 print(f"{len(test_pairs)} test pairs")
 
+# Calulate steps_per_epoch
+steps_per_epoch = int(len(train_pairs) // batch_size)
+validation_steps = int(len(val_pairs) // batch_size)
+print("steps_per_epoch: {}".format(steps_per_epoch))
+print("validation_steps: {}".format(validation_steps))
+
 ## Vectorizing the text data
 strip_chars = string.punctuation + "¿"
 strip_chars = strip_chars.replace("[", "")
 strip_chars = strip_chars.replace("]", "")
-
-vocab_size = 15000
-sequence_length = 20
-batch_size = 256
 
 
 def custom_standardization(input_string):
@@ -92,9 +170,10 @@ def make_dataset(pairs):
     eng_texts = list(eng_texts)
     spa_texts = list(spa_texts)
     dataset = tf.data.Dataset.from_tensor_slices((eng_texts, spa_texts))
+    dataset = dataset.cache()
     dataset = dataset.batch(batch_size)
     dataset = dataset.map(format_dataset)
-    return dataset.shuffle(2048).prefetch(16).cache()
+    return dataset.shuffle(2048).repeat().prefetch(16)
 
 
 train_ds = make_dataset(train_pairs)
@@ -217,10 +296,6 @@ class TransformerDecoder(layers.Layer):
 
 
 ## Assemble the end-to-end model.
-embed_dim = 256
-latent_dim = 2048
-num_heads = 8
-
 encoder_inputs = keras.Input(shape=(None,), dtype="int64", name="encoder_inputs")
 x = PositionalEmbedding(sequence_length, vocab_size, embed_dim)(encoder_inputs)
 encoder_outputs = TransformerEncoder(embed_dim, latent_dim, num_heads)(x)
@@ -238,41 +313,84 @@ decoder_outputs = decoder([decoder_inputs, encoder_outputs])
 transformer = keras.Model(
     [encoder_inputs, decoder_inputs], decoder_outputs, name="transformer"
 )
+transformer.summary()
+
+# Horovod: (optional) compression algorithm.
+compression = hvd.Compression.fp16 if fp16_allreduce else hvd.Compression.none
+
+# Horovod: adjust learning rate based on number of GPUs.
+scaled_lr = base_lr * hvd.size()
+
+opt = tf.optimizers.RMSprop(scaled_lr)
+
+# Horovod: add Horovod DistributedOptimizer.
+opt = hvd.DistributedOptimizer(opt,
+                               backward_passes_per_step=1,
+                               average_aggregated_gradients=True,
+                               compression=compression)
 
 ## Training the model
-epochs = 30  # This should be at least 30 for convergence
-
-transformer.summary()
+# Horovod: Specify `experimental_run_tf_function=False` to ensure TensorFlow
+# uses hvd.DistributedOptimizer() to compute gradients.
 transformer.compile(
-    "rmsprop", loss="sparse_categorical_crossentropy", metrics=["accuracy"]
+    optimizer=opt, loss="sparse_categorical_crossentropy", metrics=["accuracy"],
+    experimental_run_tf_function=False
 )
-transformer.fit(train_ds, epochs=epochs, validation_data=val_ds)
 
-## Decoding test sentences
-spa_vocab = spa_vectorization.get_vocabulary()
-spa_index_lookup = dict(zip(range(len(spa_vocab)), spa_vocab))
-max_decoded_sentence_length = 20
+# Track epoch in the csv in the callback.
+# Don't set append=False. Make sure empty csv when training from scratch,
+# or epoch may be overrided in the callback.
+metrics_logger = MetricsCSVLogger(metrics_path, append=True,
+                                  total_epochs=epochs)
+set_logger_params(metrics_logger, batch_size=batch_size, workers=hvd.size())
+
+# Get init_epoch from csv
+init_epoch = metrics_logger.epoch
+if init_epoch > 0:
+    transformer.load_weights(checkpoint_path)
+
+checkpoint = tf.keras.callbacks.ModelCheckpoint(checkpoint_path, save_weights_only=True)
+callbacks = [
+    hvd.callbacks.BroadcastGlobalVariablesCallback(0),
+    ]
+# Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
+callbacks_root = callbacks[:]
+callbacks_root.extend([metrics_logger, checkpoint])
+
+transformer.fit(train_ds,
+                epochs=epochs,
+                steps_per_epoch=steps_per_epoch // hvd.size(),
+                validation_data=val_ds,
+                validation_steps= validation_steps,
+                callbacks=callbacks_root if hvd.rank() == 0 else callbacks,
+                verbose=0)
 
 
-def decode_sequence(input_sentence):
-    tokenized_input_sentence = eng_vectorization([input_sentence])
-    decoded_sentence = "[start]"
-    for i in range(max_decoded_sentence_length):
-        tokenized_target_sentence = spa_vectorization([decoded_sentence])[:, :-1]
-        predictions = transformer([tokenized_input_sentence, tokenized_target_sentence])
+if hvd.rank() == 0:
+    ## Decoding test sentences
+    spa_vocab = spa_vectorization.get_vocabulary()
+    spa_index_lookup = dict(zip(range(len(spa_vocab)), spa_vocab))
+    max_decoded_sentence_length = 20
 
-        sampled_token_index = np.argmax(predictions[0, i, :])
-        sampled_token = spa_index_lookup[sampled_token_index]
-        decoded_sentence += " " + sampled_token
+    def decode_sequence(input_sentence):
+        tokenized_input_sentence = eng_vectorization([input_sentence])
+        decoded_sentence = "[start]"
+        for i in range(max_decoded_sentence_length):
+            tokenized_target_sentence = spa_vectorization([decoded_sentence])[:, :-1]
+            predictions = transformer([tokenized_input_sentence, tokenized_target_sentence])
 
-        if sampled_token == "[end]":
-            break
-    return decoded_sentence
+            sampled_token_index = np.argmax(predictions[0, i, :])
+            sampled_token = spa_index_lookup[sampled_token_index]
+            decoded_sentence += " " + sampled_token
+
+            if sampled_token == "[end]":
+                break
+        return decoded_sentence
 
 
-test_eng_texts = [pair[0] for pair in test_pairs]
-for _ in range(30):
-    input_sentence = random.choice(test_eng_texts)
-    translated = decode_sequence(input_sentence)
-    print("input: {}".format(input_sentence))
-    print("output: {}".format(translated))
+    test_eng_texts = [pair[0] for pair in test_pairs]
+    for _ in range(30):
+        input_sentence = random.choice(test_eng_texts)
+        translated = decode_sequence(input_sentence)
+        print("input: {}".format(input_sentence))
+        print("output: {}".format(translated))
