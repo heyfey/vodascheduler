@@ -1,0 +1,81 @@
+apiVersion: kubeflow.org/v1
+kind: MPIJob
+metadata:
+  name: tf2-keras-transformer-elastic
+spec:
+  slotsPerWorker: 1
+  cleanPodPolicy: Running
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - image: heyfey/horovod:sha-6916985-tf2.3.0-torch1.6.0-py3.7-cuda10.1-blacklist-recovery
+            name: mpi-launcher
+            env:
+              - name: JOB_NAME
+                value: "tf2-keras-transformer-elastic"
+              - name: NP
+                value: "2"
+              - name: MIN_NP
+                value: "1"
+              - name: MAX_NP
+                value: "4"
+              - name: EPOCHS
+                value: "30"
+            command: ["/bin/bash","-c"]
+            args:
+            - mkdir -p /outputs/$(JOB_NAME);
+              horovodrun
+              -np $(MIN_NP)
+              --min-np $(MIN_NP)
+              --max-np $(MAX_NP)
+              --host-discovery-script /etc/mpi/discover_hosts.sh
+              --network-interface eth0
+              python
+              /celeste/examples/py/tensorflow2/neural_machine_translation_with_transformer.py
+              --name $(JOB_NAME)
+              --epochs $(EPOCHS)
+              --store-dir /outputs/$(JOB_NAME)
+              --metrics-dir /metrics
+            volumeMounts:
+              - name: outputs
+                mountPath: /outputs
+          volumes:
+            - name: outputs
+              persistentVolumeClaim:
+                claimName: celeste-pvc-outputs
+    Worker:
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - image: heyfey/horovod:sha-6916985-tf2.3.0-torch1.6.0-py3.7-cuda10.1-blacklist-recovery
+            name: mpi-worker
+            resources:
+              limits:
+                nvidia.com/gpu: 1
+            volumeMounts:
+              - name: repos
+                mountPath: /celeste
+              - name: outputs
+                mountPath: /outputs
+              - name: metrics
+                mountPath: /metrics
+              - name: keras-data
+                mountPath: /.keras
+          volumes:
+            - name: repos
+              persistentVolumeClaim:
+                claimName: celeste-pvc-repos
+            - name: outputs
+              persistentVolumeClaim:
+                claimName: celeste-pvc-outputs
+            - name: metrics
+              persistentVolumeClaim:
+                claimName: celeste-pvc-metrics
+            - name: keras-data
+              persistentVolumeClaim:
+                claimName: celeste-pvc-data-keras
