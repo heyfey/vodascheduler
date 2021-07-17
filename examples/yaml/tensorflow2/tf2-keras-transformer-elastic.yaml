@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1
 kind: MPIJob
 metadata:
-  name: tensorflow2-keras-mnist-elastic
+  name: tf2-keras-transformer-elastic
 spec:
   slotsPerWorker: 1
   cleanPodPolicy: Running
@@ -16,15 +16,15 @@ spec:
             name: mpi-launcher
             env:
               - name: JOB_NAME
-                value: "tensorflow2-keras-mnist-elastic"
+                value: "tf2-keras-transformer-elastic"
               - name: NP
-                value: "1"
+                value: "2"
               - name: MIN_NP
                 value: "1"
               - name: MAX_NP
-                value: "8"
+                value: "4"
               - name: EPOCHS
-                value: "150"
+                value: "30"
             command: ["/bin/bash","-c"]
             args:
             - mkdir -p /outputs/$(JOB_NAME);
@@ -35,7 +35,7 @@ spec:
               --host-discovery-script /etc/mpi/discover_hosts.sh
               --network-interface eth0
               python
-              /celeste/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
+              /celeste/examples/py/tensorflow2/neural_machine_translation_with_transformer.py
               --name $(JOB_NAME)
               --epochs $(EPOCHS)
               --store-dir /outputs/$(JOB_NAME)

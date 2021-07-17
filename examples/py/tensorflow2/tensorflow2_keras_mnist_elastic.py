@@ -32,7 +32,7 @@ parser.add_argument("--batch-size"        , dest ="batch_size", type=int, defaul
 parser.add_argument("--epochs"            , dest ="epochs", type=int, default=24, help="number of epochs to train")
 parser.add_argument('--fp16-allreduce'    , dest ="fp16_allreduce", action='store_true', default=False, help='use fp16 compression during allreduce')
 parser.add_argument('--warmup-epochs'     , dest ="warmup_epochs", type=int, default=0, help='number of warmup epochs')
-parser.add_argument('--batches-per-commit', dest ="batches_per_commit", type=int, default=0, help='commit state every # batches, default haft an epoch')
+parser.add_argument('--batches-per-commit', dest ="batches_per_commit", type=int, default=100, help='commit state every # batches')
 
 args = parser.parse_args()
 
@@ -93,10 +93,8 @@ dataset = tf.data.Dataset.from_tensor_slices(
              tf.cast(mnist_labels, tf.int64))
 )
 
-# Calulate steps_per_epoch and batches_per_commit
+# Calulate steps_per_epoch
 steps_per_epoch = int(dataset.__len__() // batch_size)
-if not batches_per_commit:
-    batches_per_commit = (steps_per_epoch // hvd.size()) // 2
 
 dataset = dataset.repeat().shuffle(10000).batch(batch_size)
 
@@ -162,7 +160,7 @@ callbacks = [
     
     hvd.elastic.UpdateEpochStateCallback(state),
     hvd.elastic.UpdateBatchStateCallback(state),
-    hvd.elastic.CommitStateCallback(state, batches_per_commit=100), # TODO: would hang when reset with variable batches_per_commit
+    hvd.elastic.CommitStateCallback(state, batches_per_commit=batches_per_commit),
 ]
 
 # Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
