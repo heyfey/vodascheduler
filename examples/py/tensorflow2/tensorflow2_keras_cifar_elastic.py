@@ -171,7 +171,7 @@ model.compile(optimizer=opt,
 # Horovod: initialize optimizer state so we can synchronize across workers
 # Keras has empty optimizer variables() for TF2:
 # https://sourcegraph.com/github.com/tensorflow/tensorflow@v2.4.1/-/blob/tensorflow/python/keras/optimizer_v2/optimizer_v2.py#L351:10
-model.fit(dataset, steps_per_epoch=1, epochs=1, callbacks=None)
+model.fit(train_iter, steps_per_epoch=1, epochs=1, callbacks=None)
 
 # Track epoch in the csv in the callback.
 # Don't set append=False. Make sure empty csv when training from scratch,
@@ -209,7 +209,7 @@ def on_state_reset():
 
     tf.keras.backend.set_value(state.model.optimizer.lr, base_lr * hvd.size())
     # Re-initialize, to join with possible new ranks
-    state.model.fit(dataset, steps_per_epoch=1, epochs=1, callbacks=None)
+    state.model.fit(train_iter, steps_per_epoch=1, epochs=1, callbacks=None)
 
 # These callbacks are called after horovoe has reinitialized, but before state is synchronized across the workers.
 state.register_reset_callbacks([on_state_reset])
