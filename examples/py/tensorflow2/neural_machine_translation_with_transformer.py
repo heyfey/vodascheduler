@@ -388,7 +388,7 @@ state.register_reset_callbacks([on_state_reset])
 @hvd.elastic.run
 def train(state):
     state.model.fit(train_ds,
-                    epochs=epochs,
+                    epochs=epochs-state.epoch,
                     steps_per_epoch=steps_per_epoch // hvd.size(),
                     validation_data=val_ds,
                     validation_steps=validation_steps,
