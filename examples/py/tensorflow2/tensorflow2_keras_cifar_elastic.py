@@ -168,6 +168,11 @@ model.compile(optimizer=opt,
               metrics=['accuracy'],
               experimental_run_tf_function=False)
 
+# Horovod: initialize optimizer state so we can synchronize across workers
+# Keras has empty optimizer variables() for TF2:
+# https://sourcegraph.com/github.com/tensorflow/tensorflow@v2.4.1/-/blob/tensorflow/python/keras/optimizer_v2/optimizer_v2.py#L351:10
+model.fit(dataset, steps_per_epoch=1, epochs=1, callbacks=None)
+
 # Track epoch in the csv in the callback.
 # Don't set append=False. Make sure empty csv when training from scratch,
 # or epoch may be overrided in the callback.
@@ -180,25 +185,48 @@ init_epoch = metrics_logger.epoch
 if init_epoch > 0:
     model.load_weights(checkpoint_path)
 
+state = hvd.elastic.KerasState(model, batch=0, epoch=init_epoch)
+
 checkpoint = tf.keras.callbacks.ModelCheckpoint(checkpoint_path, save_weights_only=True)
 
 callbacks = [
-        hvd.callbacks.BroadcastGlobalVariablesCallback(0),
-        hvd.callbacks.MetricAverageCallback(),
+    hvd.elastic.UpdateEpochStateCallback(state),
+    hvd.elastic.UpdateBatchStateCallback(state),
+    hvd.elastic.CommitStateCallback(state, batches_per_commit=batches_per_commit),
 ]
 
 # Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
 callbacks_root = callbacks[:]
 callbacks_root.extend([metrics_logger, checkpoint])
 
-model.fit(train_iter,
-          epochs=epochs,
-          steps_per_epoch=len(train_iter) // hvd.size(),
-          validation_data=test_iter,
-          validation_steps=len(test_iter) // hvd.size(),
-          callbacks=callbacks_root if hvd.rank() == 0 else callbacks,
-          verbose=0)
+def on_state_reset():
+    # Set worker-size-dependent params in logger
+    set_logger_params(metrics_logger, batch_size=batch_size,
+                      workers=hvd.size())
+    # reset callbacks_root to add metrics_logger with correct params
+    callbacks_root = callbacks[:]
+    callbacks_root.extend([metrics_logger, checkpoint])
 
+    tf.keras.backend.set_value(state.model.optimizer.lr, base_lr * hvd.size())
+    # Re-initialize, to join with possible new ranks
+    state.model.fit(dataset, steps_per_epoch=1, epochs=1, callbacks=None)
+
+# These callbacks are called after horovoe has reinitialized, but before state is synchronized across the workers.
+state.register_reset_callbacks([on_state_reset])
+
+# Train the model.
+# Horovod: adjust number of steps based on number of GPUs.
+@hvd.elastic.run
+def train(state):
+    state.model.fit(train_iter,
+                    epochs=epochs-state.epoch,
+                    steps_per_epoch=len(train_iter) // hvd.size(),
+                    validation_data=test_iter,
+                    validation_steps=len(test_iter) // hvd.size(),
+                    callbacks=callbacks_root if hvd.rank() == 0 else callbacks,
+                    verbose=0)
+
+train(state)
 
 # Evaluate the model.
 if hvd.rank() == 0:
