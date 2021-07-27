@@ -24,10 +24,11 @@ spec:
               - name: MAX_NP
                 value: "4"
               - name: EPOCHS
-                value: "60"
+                value: "50"
             command: ["/bin/bash","-c"]
             args:
             - mkdir -p /outputs/$(JOB_NAME);
+              HOROVOD_BLACKLIST_TIMEOUT_SECOND=30
               horovodrun
               -np $(MIN_NP)
               --min-np $(MIN_NP)
@@ -42,8 +43,10 @@ spec:
               --dataset cifar10
               --optimizer RMSprop
               --lr 0.045
+              --batch-size 256
               --store-dir /outputs/$(JOB_NAME)
               --metrics-dir /metrics
+              --fp16-allreduce
             volumeMounts:
               - name: outputs
                 mountPath: /outputs
@@ -51,6 +54,7 @@ spec:
             - name: outputs
               persistentVolumeClaim:
                 claimName: celeste-pvc-outputs
+          terminationGracePeriodSeconds: 5
     Worker:
       replicas: 2
       template:
@@ -83,3 +87,4 @@ spec:
             - name: keras-data
               persistentVolumeClaim:
                 claimName: celeste-pvc-data-keras
+          terminationGracePeriodSeconds: 5

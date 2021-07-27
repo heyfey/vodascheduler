@@ -25,14 +25,14 @@ var (
 	// Threshold of each queue (secs).
 	// map{priority: threshold}
 	TiresiasThresholdsSec = map[int]float64{
-		0: 3600, // 1 hour
+		0: 1800, // 1 hour
 		1: math.Inf(1),
 	}
 
 	// Tiresias defines the STARVELIMIT as promoteKnob * last execution time.
 	// training job will be promoted th the highest priority queue if it has been
 	// waiting longer than the STARVELIMIT.
-	TiresiasPromoteKnob = 8
+	TiresiasPromoteKnob = 4
 )
 
 type Tiresias struct {

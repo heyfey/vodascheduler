@@ -71,6 +71,10 @@ metrics_path = os.path.join(metrics_dir, job_name + '.csv')
 
 checkpoint_path = os.path.join(store_dir, checkpoint_format)
 
+from pathlib import Path
+checkpoint_format_bk = Path(checkpoint_format).stem + '-bk.h5'
+checkpoint_path_bk = os.path.join(store_dir, checkpoint_format_bk)
+
 # Horovod: initialize Horovod.
 hvd.init()
 
@@ -183,11 +187,19 @@ set_logger_params(metrics_logger, batch_size=batch_size, workers=hvd.size())
 # Get init_epoch from csv
 init_epoch = metrics_logger.epoch
 if init_epoch > 0:
-    model.load_weights(checkpoint_path)
+    try:
+        model.load_weights(checkpoint_path)
+    except:
+        try:
+            model.load_weights(checkpoint_path_bk)
+        except:
+            pass
 
 state = hvd.elastic.KerasState(model, batch=0, epoch=init_epoch)
 
 checkpoint = tf.keras.callbacks.ModelCheckpoint(checkpoint_path, save_weights_only=True)
+checkpoint_bk = tf.keras.callbacks.ModelCheckpoint(checkpoint_path_bk, save_weights_only=True, 
+                                                   save_freq=3*(len(train_iter) // hvd.size()))
 
 callbacks = [
     hvd.elastic.UpdateEpochStateCallback(state),
@@ -197,7 +209,7 @@ callbacks = [
 
 # Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
 callbacks_root = callbacks[:]
-callbacks_root.extend([metrics_logger, checkpoint])
+callbacks_root.extend([metrics_logger, checkpoint, checkpoint_bk])
 
 def on_state_reset():
     # Set worker-size-dependent params in logger
@@ -205,7 +217,7 @@ def on_state_reset():
                       workers=hvd.size())
     # reset callbacks_root to add metrics_logger with correct params
     callbacks_root = callbacks[:]
-    callbacks_root.extend([metrics_logger, checkpoint])
+    callbacks_root.extend([metrics_logger, checkpoint, checkpoint_bk])
 
     tf.keras.backend.set_value(state.model.optimizer.lr, base_lr * hvd.size())
     # Re-initialize, to join with possible new ranks

@@ -31,6 +31,7 @@ var launcherToleration = corev1.Toleration{
 var defaultNodes = map[nodeName]*nodeState{
 	"gpu3": NewNodeState("gpu3", 4),
 	"gpu4": NewNodeState("gpu4", 4),
+	"gpu5": NewNodeState("gpu5", 4),
 }
 
 // type PlacementManagerMetrics struct {

@@ -18,7 +18,7 @@ import (
 var (
 	// E-Tiresias triggers compaction if the number of pending jobs > the
 	// compaction threshold.
-	ElasticTiresiasCompactionThreshold = 10
+	ElasticTiresiasCompactionThreshold = 4
 )
 
 type ElasticTiresias struct {

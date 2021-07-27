@@ -29,10 +29,10 @@ const (
 	restartChannelSize      = 100
 	// Number of GPUs of this scheduler
 	// TODO: should be user specified or discover in runtime
-	gpus = 8
+	gpus = 12
 
 	rateLimitTimeMetricsSeconds = 5
-	reschedRateLimitSeconds     = 30
+	reschedRateLimitSeconds     = 120
 )
 
 // type SchedulerMetrics struct {
