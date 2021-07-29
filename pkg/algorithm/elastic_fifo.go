@@ -47,6 +47,9 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 		if freeGPU >= job.Config.MinGPU {
 			result[job.JobName] = job.Config.MinGPU
 			freeGPU -= job.Config.MinGPU
+			if result[job.JobName] == job.Config.MaxGPU {
+				sastified[job.JobName] = true
+			}
 		} else {
 			sastified[job.JobName] = true // unable to allocate minGPU to the job
 		}
