@@ -23,7 +23,7 @@ from callbacks import MetricsCSVLogger, set_logger_params
 from argparse import ArgumentParser
 
 
-parser = ArgumentParser(description='Celeste tf.keras Transformer Example')
+parser = ArgumentParser(description='Voda tf.keras Transformer Example')
 parser.add_argument("--name"              , dest ="job_name", type=str, default='', help="unique name to identify training job (default: file name)")
 parser.add_argument("--data-dir"          , dest ="d_dir", type=str, default='./', help="path to dataset")
 parser.add_argument("--store-dir"         , dest ="s_dir", type=str, default='./', help="path to outputs (checkpoint)")

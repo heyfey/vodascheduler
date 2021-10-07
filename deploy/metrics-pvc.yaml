@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: celeste-pv-metrics
+  name: voda-pv-metrics
 spec:
   capacity:
     storage: 5Gi
@@ -9,12 +9,12 @@ spec:
     - ReadWriteMany
   nfs:
     server: 192.168.20.100
-    path: "/volume1/homes/heyfey/celeste/metrics"
+    path: "/volume1/homes/heyfey/voda/metrics"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: celeste-pvc-metrics
+  name: voda-pvc-metrics
 spec:
   accessModes:
     - ReadWriteMany

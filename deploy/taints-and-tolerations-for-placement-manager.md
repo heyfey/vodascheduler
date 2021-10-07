@@ -4,13 +4,13 @@ The placement manager manages job placements using [taints and tolerations](http
 
 ## Taint the nodes
 
-Taint all the dedicated nodes with `celeste/hostname={node_name}:NoExecute`
+Taint all the dedicated nodes with `vodascheduler/hostname={node_name}:NoExecute`
 
 For instances:
 ```
-kubectl taint node node1 celeste/hostname=node1:NoExecute
-kubectl taint node node2 celeste/hostname=node2:NoExecute
-kubectl taint node node3 celeste/hostname=node3:NoExecute
+kubectl taint node node1 vodascheduler/hostname=node1:NoExecute
+kubectl taint node node2 vodascheduler/hostname=node2:NoExecute
+kubectl taint node node3 vodascheduler/hostname=node3:NoExecute
 ```
 
 ## Add tolerations if needed

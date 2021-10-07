@@ -5,8 +5,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/heyfey/celeste/cmd/cmd"
-	"github.com/heyfey/celeste/config"
+	"github.com/heyfey/vodascheduler/cmd/cmd"
+	"github.com/heyfey/vodascheduler/config"
 	"github.com/urfave/cli/v2"
 )
 
@@ -15,7 +15,7 @@ func main() {
 	app.Name = config.Name
 	app.Version = config.Version
 	app.Usage = "DLT jobs scheduler"
-	app.Description = "Manage training jobs in Celeste scheduler"
+	app.Description = "Manage training jobs in Voda scheduler"
 	app.Commands = []*cli.Command{
 		{
 			Name:   "create",

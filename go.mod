@@ -1,4 +1,4 @@
-module github.com/heyfey/celeste
+module github.com/heyfey/vodascheduler
 
 go 1.13
 

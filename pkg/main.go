@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/heyfey/celeste/config"
-	"github.com/heyfey/celeste/pkg/common/logger"
-	"github.com/heyfey/celeste/pkg/service"
+	"github.com/heyfey/vodascheduler/config"
+	"github.com/heyfey/vodascheduler/pkg/common/logger"
+	"github.com/heyfey/vodascheduler/pkg/service"
 )
 
 func main() {

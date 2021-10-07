@@ -3,7 +3,7 @@ package algorithm
 import (
 	"errors"
 
-	"github.com/heyfey/celeste/pkg/common/types"
+	"github.com/heyfey/vodascheduler/pkg/common/types"
 )
 
 func allTrue(sastified map[string]bool) bool {

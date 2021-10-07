@@ -35,7 +35,7 @@ spec:
               --host-discovery-script /etc/mpi/discover_hosts.sh
               --network-interface eth0
               python
-              /celeste/examples/py/tensorflow2/neural_machine_translation_with_transformer.py
+              /vodascheduler/examples/py/tensorflow2/neural_machine_translation_with_transformer.py
               --name $(JOB_NAME)
               --epochs $(EPOCHS)
               --store-dir /outputs/$(JOB_NAME)
@@ -46,7 +46,7 @@ spec:
           volumes:
             - name: outputs
               persistentVolumeClaim:
-                claimName: celeste-pvc-outputs
+                claimName: voda-pvc-outputs
     Worker:
       replicas: 2
       template:
@@ -59,7 +59,7 @@ spec:
                 nvidia.com/gpu: 1
             volumeMounts:
               - name: repos
-                mountPath: /celeste
+                mountPath: /vodascheduler
               - name: outputs
                 mountPath: /outputs
               - name: metrics
@@ -69,13 +69,13 @@ spec:
           volumes:
             - name: repos
               persistentVolumeClaim:
-                claimName: celeste-pvc-repos
+                claimName: voda-pvc-repos
             - name: outputs
               persistentVolumeClaim:
-                claimName: celeste-pvc-outputs
+                claimName: voda-pvc-outputs
             - name: metrics
               persistentVolumeClaim:
-                claimName: celeste-pvc-metrics
+                claimName: voda-pvc-metrics
             - name: keras-data
               persistentVolumeClaim:
-                claimName: celeste-pvc-data-keras
+                claimName: voda-pvc-data-keras

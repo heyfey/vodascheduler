@@ -16,9 +16,9 @@ spec:
   volumes:
   - name: mongo-data
     persistentVolumeClaim:
-      claimName: celeste-pvc-mongodb
+      claimName: voda-pvc-mongodb
   tolerations:
-  - key: "celeste/hostname"
+  - key: "vodascheduler/hostname"
     operator: "Exists"
     effect: "NoExecute"
 ---

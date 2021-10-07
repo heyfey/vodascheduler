@@ -14,7 +14,7 @@ from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.compat import collections_abc
 
-# Celeste: set worker size dependent params in logger
+# Voda: set worker size dependent params in logger
 def set_logger_params(logger, batch_size=None, workers=1):
   params = logger.params or {}
   params['workers'] = workers

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/heyfey/celeste/pkg/common/types"
+	"github.com/heyfey/vodascheduler/pkg/common/types"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
 	// "github.com/prometheus/client_golang/prometheus"
 )
@@ -129,7 +129,7 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 func NewJobMetrics(name string) *JobMetrics {
 	// preemptions := prometheus.NewCounter(prometheus.CounterOpts{
 	// 	Namespace: name,
-	// 	Subsystem: "celeste",
+	// 	Subsystem: "vodascheduler",
 	// 	Name:      "preemptions",
 	// 	Help:      "Preemption times of the job.",
 	// })
@@ -137,7 +137,7 @@ func NewJobMetrics(name string) *JobMetrics {
 
 	// workers := prometheus.NewGauge(prometheus.GaugeOpts{
 	// 	Namespace: name,
-	// 	Subsystem: "celeste",
+	// 	Subsystem: "vodascheduler",
 	// 	Name:      "workers",
 	// 	Help:      "Number of GPUs of the job.",
 	// })

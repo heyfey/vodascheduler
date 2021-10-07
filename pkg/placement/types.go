@@ -1,7 +1,7 @@
 package placement
 
 import (
-	"github.com/heyfey/celeste/config"
+	"github.com/heyfey/vodascheduler/config"
 	corev1 "k8s.io/api/core/v1"
 )
 

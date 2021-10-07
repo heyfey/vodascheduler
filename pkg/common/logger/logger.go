@@ -12,16 +12,16 @@ import (
 
 // Constants for logging
 const (
-	Name = "Celeste"
+	Name = "Voda Scheduler"
 	User = "heyfey"
 
 	// TODO: replace these
-	LogDir  = "/home/heyfey/celeste/celeste/logs"
+	LogDir  = "/home/heyfey/voda/vodascheduler/logs"
 	LogName = "my_file"
 
 	LogToStderr     = "false"
 	AlsoLogtoStderr = "true"
-	V               = "5"
+	V               = "4"
 )
 
 // TODO: Considering switch to klog

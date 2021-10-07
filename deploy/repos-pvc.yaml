@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: celeste-pv-repos
+  name: voda-pv-repos
 spec:
   capacity:
     storage: 5Gi
@@ -9,12 +9,12 @@ spec:
     - ReadWriteMany
   nfs:
     server: 192.168.20.100
-    path: "/volume1/homes/heyfey/celeste/celeste"
+    path: "/volume1/homes/heyfey/voda/vodascheduler"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: celeste-pvc-repos
+  name: voda-pvc-repos
 spec:
   accessModes:
     - ReadWriteMany

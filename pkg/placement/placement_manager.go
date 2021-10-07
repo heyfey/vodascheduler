@@ -6,10 +6,10 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/heyfey/celeste/config"
-	"github.com/heyfey/celeste/pkg/common/logger"
-	"github.com/heyfey/celeste/pkg/common/types"
 	"github.com/heyfey/munkres"
+	"github.com/heyfey/vodascheduler/config"
+	"github.com/heyfey/vodascheduler/pkg/common/logger"
+	"github.com/heyfey/vodascheduler/pkg/common/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"

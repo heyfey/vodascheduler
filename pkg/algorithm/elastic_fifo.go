@@ -5,8 +5,8 @@ package algorithm
 import (
 	"sort"
 
-	"github.com/heyfey/celeste/pkg/common/logger"
-	"github.com/heyfey/celeste/pkg/common/types"
+	"github.com/heyfey/vodascheduler/pkg/common/logger"
+	"github.com/heyfey/vodascheduler/pkg/common/types"
 )
 
 type ElasticFIFO struct {

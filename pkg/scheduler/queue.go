@@ -5,7 +5,7 @@ package scheduler
 import (
 	"errors"
 
-	"github.com/heyfey/celeste/pkg/common/trainingjob"
+	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 )
 
 // JobQueue represents the functionality of a queue

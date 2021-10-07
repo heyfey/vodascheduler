@@ -7,7 +7,7 @@ import "time"
 // JobConfigType represents the job arguments required by the system
 // Users are required to specify these arguments by environment variables in the yaml
 // see example at:
-// https://github.com/heyfey/celeste/blob/main/examples/yaml/tensorflow2/tensorflow2-keras-mnist-elastic.yaml
+// https://github.com/heyfey/vodascheduler/blob/main/examples/yaml/tensorflow2/tensorflow2-keras-mnist-elastic.yaml
 type JobConfigType string
 
 const (

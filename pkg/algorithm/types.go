@@ -7,8 +7,8 @@ https://github.com/microsoft/hivedscheduler/blob/master/pkg/algorithm/hived_algo
 package algorithm
 
 import (
-	"github.com/heyfey/celeste/pkg/common/trainingjob"
-	"github.com/heyfey/celeste/pkg/common/types"
+	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
+	"github.com/heyfey/vodascheduler/pkg/common/types"
 )
 
 type ReadyJobs []trainingjob.TrainingJob

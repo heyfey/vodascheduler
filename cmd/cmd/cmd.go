@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/heyfey/celeste/config"
+	"github.com/heyfey/vodascheduler/config"
 	"github.com/urfave/cli/v2"
 )
 

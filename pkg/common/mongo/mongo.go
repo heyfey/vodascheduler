@@ -1,7 +1,7 @@
 package mongo
 
 import (
-	"github.com/heyfey/celeste/pkg/common/logger"
+	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"gopkg.in/mgo.v2"
 )
 
@@ -34,7 +34,7 @@ func ConnectMongo() *mgo.Session {
 	// host := os.Getenv("MONGODB_SVC_SERVICE_HOST")
 	// port := os.Getenv("MONGODB_SVC_SERVICE_PORT")
 	// TODO
-	host := "10.101.201.117"
+	host := "10.109.175.25"
 	port := "27017"
 	mongoURI := host + ":" + port
 	session, err := mgo.Dial(mongoURI)

@@ -1,10 +1,10 @@
 package config
 
 const (
-	Name       = "celeste"
-	Msg        = "Celeste - DLT jobs scheduler"
+	Name       = "voda"
+	Msg        = "Voda Scheduler - DLT jobs scheduler"
 	Version    = "0.0.1"
-	Port       = "10000"
+	Port       = "55587"
 	EntryPoint = "/training"
-	TaintKey   = "celeste/hostname"
+	TaintKey   = "vodascheduler/hostname"
 )

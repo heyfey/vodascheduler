@@ -10,7 +10,7 @@ import (
 
 func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Endpoint Hit: homePage")
-	fmt.Fprintf(w, "Celeste - DLT jobs scheduler")
+	fmt.Fprintf(w, "Voda Scheduler - DLT jobs scheduler")
 }
 
 func (s *Service) createTrainingJobHandler() http.HandlerFunc {

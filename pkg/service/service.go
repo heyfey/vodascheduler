@@ -4,8 +4,8 @@ package service
 
 import (
 	"github.com/gorilla/mux"
-	"github.com/heyfey/celeste/config"
-	"github.com/heyfey/celeste/pkg/jobmaster"
+	"github.com/heyfey/vodascheduler/config"
+	"github.com/heyfey/vodascheduler/pkg/jobmaster"
 )
 
 type Service struct {
