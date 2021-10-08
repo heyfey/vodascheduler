@@ -1,6 +1,8 @@
 package mongo
 
 import (
+	"os"
+
 	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"gopkg.in/mgo.v2"
 )
@@ -31,11 +33,9 @@ func ConnectMongo() *mgo.Session {
 	log := logger.GetLogger()
 	logger.Flush()
 
-	// host := os.Getenv("MONGODB_SVC_SERVICE_HOST")
-	// port := os.Getenv("MONGODB_SVC_SERVICE_PORT")
-	// TODO
-	host := "10.109.175.25"
-	port := "27017"
+	host := os.Getenv("MONGODB_SVC_SERVICE_HOST")
+	port := os.Getenv("MONGODB_SVC_SERVICE_PORT")
+
 	mongoURI := host + ":" + port
 	session, err := mgo.Dial(mongoURI)
 	if err != nil {

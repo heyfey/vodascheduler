@@ -18,7 +18,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	yaml2 "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/client-go/tools/clientcmd"
+
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -43,12 +44,11 @@ func NewJobMaster() *JobMaster {
 
 	schedulers := make(map[string]*scheduler.Scheduler)
 
-	kubeconfig := "/home/heyfey/.kube/config" // TODO: connect to k8s in container
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	config, err := rest.InClusterConfig()
 	if err != nil {
 		log.Error(err, "Failed to build config")
 		logger.Flush()
-		panic(err)
+		panic(err.Error())
 	}
 
 	session := mongo.ConnectMongo()

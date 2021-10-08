@@ -12,8 +12,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// TODO: Get url from service ip
-var url = "http://localhost:" + config.Port + config.EntryPoint
+var url = "http://" + config.IP + ":" + config.Port + config.EntryPoint
 
 func CreateJob(c *cli.Context) error {
 	file := c.String("filename")

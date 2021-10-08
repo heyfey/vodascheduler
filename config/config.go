@@ -5,6 +5,7 @@ const (
 	Msg        = "Voda Scheduler - DLT jobs scheduler"
 	Version    = "0.0.1"
 	Port       = "55587"
+	IP         = "10.100.86.93"
 	EntryPoint = "/training"
 	TaintKey   = "vodascheduler/hostname"
 )

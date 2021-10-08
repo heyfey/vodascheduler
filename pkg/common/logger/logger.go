@@ -16,8 +16,8 @@ const (
 	User = "heyfey"
 
 	// TODO: replace these
-	LogDir  = "/home/heyfey/voda/vodascheduler/logs"
-	LogName = "my_file"
+	LogDir  = "/logs"
+	LogName = "voda"
 
 	LogToStderr     = "false"
 	AlsoLogtoStderr = "true"
