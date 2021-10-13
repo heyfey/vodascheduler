@@ -10,6 +10,7 @@ import (
 	"github.com/heyfey/vodascheduler/config"
 	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -33,9 +34,6 @@ var defaultNodes = map[nodeName]*nodeState{
 	"gpu4": NewNodeState("gpu4", 4),
 }
 
-// type PlacementManagerMetrics struct {
-// }
-
 type PlacementManager struct {
 	SchedulerID string
 	kClient     kubeClient.Interface
@@ -54,6 +52,8 @@ type PlacementManager struct {
 	placementLock sync.RWMutex
 
 	StopCh chan struct{}
+
+	metrics PlacementManagerMetrics
 }
 
 // NewPlacementManager creates a new placement manager.
@@ -81,6 +81,7 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 		podInformer:   podInformer,
 		StopCh:        make(chan struct{}),
 	}
+	pm.metrics = pm.initPlacementManagerMetrics()
 
 	// setup informer callbacks
 	pm.podInformer.AddEventHandler(
@@ -166,6 +167,9 @@ func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
 	defer log.Info("Finished job placements adjustment", "scheduler", pm.SchedulerID)
 
 	pm.placementLock.Lock()
+	timer := prometheus.NewTimer(pm.metrics.placementAlgoDuration)
+
+	// Starting placement algorithm
 	pm.releaseSlots(jobRequests)
 	// construct empty nodes from nodeStates
 	schedulableNodesList := make([]*nodeState, 0, len(pm.nodeStates))
@@ -176,6 +180,9 @@ func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
 	pm.bindNodes(schedulableNodesList)
 	pm.updateJobStates()
 	deletingPodList := pm.updatePodNodeName()
+	// Placement algorithm ended
+
+	timer.ObserveDuration()
 	pm.placementLock.Unlock()
 
 	pm.deletePods(deletingPodList)

@@ -14,6 +14,7 @@ import (
 	kubeflowcommon "github.com/kubeflow/common/pkg/apis/common/v1"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
 	client "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned/typed/kubeflow/v1"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,9 +36,6 @@ const (
 	reschedRateLimitSeconds     = 30
 )
 
-// type SchedulerMetrics struct {
-// }
-
 type Scheduler struct {
 	SchedulerID  string
 	GPUAvailable int
@@ -56,6 +54,9 @@ type Scheduler struct {
 
 	// ScheduleAlgorithm is an interface implemented by things that know how to schedule training jobs
 	Algorithm algorithm.SchedulerAlgorithm
+
+	// SchedulerMetrics contains run-time metrics of the scheduler
+	Metrics SchedulerMetrics
 
 	// channels used for main logic of the scheduler, should only be cousumed by scheduler.Run()
 	ReschedCh       chan time.Time
@@ -114,6 +115,9 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 
 		PlacementManager: pm,
 	}
+
+	s.Metrics = s.initSchedulerMetrics()
+
 	return s, nil
 }
 
@@ -159,13 +163,20 @@ func (s *Scheduler) resched() {
 	log.V(3).Info("Started resched", "scheduler", s.SchedulerID)
 	defer log.V(3).Info("Finished resched", "scheduler", s.SchedulerID)
 
+	timer := prometheus.NewTimer(s.Metrics.reschedDuration)
+	defer timer.ObserveDuration()
+
 	s.SchedulerLock.Lock()
 	oldJobNumGPU := s.JobNumGPU
 	s.updateAllJobsInfoFromDB()
 
 	queueCopied := make(algorithm.ReadyJobs, s.Queue.Size())
 	copy(queueCopied, s.Queue.Queue)
+
+	timerAlgo := prometheus.NewTimer(s.Metrics.reschedAlgoDuration)
 	s.JobNumGPU = s.Algorithm.Schedule(queueCopied)
+	timerAlgo.ObserveDuration()
+
 	// s.SchedulerLock.Unlock() // may want to unlock here to implement cancelling mechanism
 
 	adjusted := s.applySchedulerResults(oldJobNumGPU)
@@ -179,6 +190,8 @@ func (s *Scheduler) resched() {
 	} else {
 		log.V(3).Info("Nothing changed, skipped ajust placements", "scheduler", s.SchedulerID)
 	}
+
+	s.Metrics.reschedCounter.Inc()
 }
 
 // updateAllJobsInfoFromDB finds information of all training jobs in mongodb
@@ -479,6 +492,7 @@ func (s *Scheduler) handleJobCompleted(job string) {
 
 	s.JobStatuses[job] = types.JobCompleted
 	s.Queue.Delete(job)
+	s.Metrics.jobsCompletedCounter.Inc()
 
 	now := time.Now()
 	s.ReschedCh <- now
@@ -500,6 +514,7 @@ func (s *Scheduler) handleJobFailed(job string) {
 
 	s.JobStatuses[job] = types.JobFailed
 	s.Queue.Delete(job)
+	s.Metrics.jobsFailedCounter.Inc()
 
 	now := time.Now()
 	s.ReschedCh <- now
