@@ -9,6 +9,7 @@ require (
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/kubeflow/common v0.3.3
 	github.com/kubeflow/mpi-operator v0.2.4-0.20210421114141-298b527bb033
+	github.com/prometheus/client_golang v1.5.1
 	github.com/urfave/cli/v2 v2.3.0
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
