@@ -152,6 +152,10 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	// trigger resched
 	sched.ReschedCh <- now
 
+	// TODO: Bad design, metrics should be updated by scheduler itself.
+	//       Considering use a function to accept new job in scheduler.
+	sched.Metrics.JobsCreatedCounter.Inc()
+
 	log.Info("Training job created", "job", jobName)
 	return jobName, nil
 }
@@ -274,6 +278,10 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	if scheduled {
 		sched.ReschedCh <- time.Now()
 	}
+
+	// TODO: Bad design, metrics should be updated by scheduler itself.
+	//       Considering use a function to deleted new job in scheduler.
+	sched.Metrics.JobsDeletedCounter.Inc()
 
 	log.Info("Training job deleted", "job", jobName)
 	return nil

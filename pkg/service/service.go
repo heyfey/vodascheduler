@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/heyfey/vodascheduler/config"
 	"github.com/heyfey/vodascheduler/pkg/jobmaster"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Service struct {
@@ -27,4 +28,5 @@ func (s *Service) initRoutes() {
 	s.Router.HandleFunc(config.EntryPoint, s.createTrainingJobHandler()).Methods("POST")
 	s.Router.HandleFunc(config.EntryPoint, s.deleteTrainingJobHandler()).Methods("DELETE")
 	s.Router.HandleFunc(config.EntryPoint, s.getAllTrainingJobHandler()).Methods("GET")
+	s.Router.Handle("/metrics", promhttp.Handler())
 }
