@@ -2,6 +2,7 @@ apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
   name: metrics-collector
+  namespace: voda-scheduler
 spec:
   schedule: "*/1 * * * *"
   jobTemplate:
