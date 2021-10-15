@@ -199,3 +199,8 @@ spec:
           "mpi-operator"
         ]
         imagePullPolicy: Always
+      tolerations:
+      # toleration key should match taint key in config/config.go
+      - key: "vodascheduler/hostname"
+        operator: "Exists"
+        effect: "NoExecute"
