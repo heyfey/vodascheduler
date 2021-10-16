@@ -1,10 +1,12 @@
 # Taints and Tolerations for Placement Manager
 
-The placement manager manages job placements using [taints and tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
+The placement manager manages job placements using [taints and tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/).
+
+Learn more in [Placement management](https://github.com/heyfey/vodascheduler/blob/main/design/placement-management.md).
 
 ## Taint the nodes
 
-Taint all the dedicated nodes with `vodascheduler/hostname={node_name}:NoExecute`
+Taint all schedulable nodes with `vodascheduler/hostname=<node_name>:NoExecute`
 
 For instances:
 ```
