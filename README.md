@@ -185,8 +185,11 @@ kubectl delete -f deploy/vodascheduler
 ## Related Projects
 
 [kubeflow/mpi-operator](https://github.com/kubeflow/mpi-operator): The MPIJob controller.
+
 [heyfey/horovod](https://github.com/heyfey/horovod/tree/blacklist-recovery-v0.21.3): Distributed training framework (customized version).
+
 [heyfey/munkres](https://github.com/heyfey/munkres): Hungarian algorithm used in the placement algorithm.
+
 [heyfey/nvidia_smi_exporter](https://github.com/heyfey/nvidia_smi_exporter): For monitoring GPUs in the cluster. 
 
 ## Publications
