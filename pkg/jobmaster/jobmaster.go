@@ -97,8 +97,20 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 		return "", err
 	}
 
-	// find history information of the training job by its name (assume history exists //TODO)
-	// and insert a new record to mongodb with modified job name (with timestamp added)
+	// In Voda, we identify a job by its metadata.name, which means jobs with
+	// same metadata.name are considered the same and assumed to have similar characteristics.
+	// We also extend all jobs' metadata.name with a timestamp to distinguish them.
+	//
+	// First find record (history information) of the job by its metadata.name in mongodb.
+	// If not present, create and a basic info and insert it to the database.
+	// Then, insert a new record with modified job name (with timestamp added)
+	//
+	// db structure:
+	// | database             | collection | records                        |
+	// | -------------------- | ---------- | ------------------------------ |
+	// | databaseNameJobInfo  | job name 1 | job name with unique timestamp |
+	// | databaseNameJobInfo  | job name 2 | job name with unique timestamp |
+	//
 	jobName := mpijob.GetName()
 	jobCollection := jobName
 
@@ -107,8 +119,20 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	info := mongo.TrainingJobInfo{}
 	err = sess.DB(databaseNameJobInfo).C(jobCollection).Find(bson.M{"name": jobName}).One(&info)
 	if err != nil {
-		log.Info("Could not find job info in mongo", "err", err, "database", databaseNameJobInfo, "collection", jobCollection, "job", jobName)
-		return "", err // TODO: create basic training record in mongodb if not exist
+		if err == mgo.ErrNotFound {
+			log.Info("Could not find job info in mongo", "err", err, "database", databaseNameJobInfo,
+				"collection", jobCollection, "job", jobName)
+
+			info = mongo.CreateBaseJobInfo(jobName)
+			err = sess.DB(databaseNameJobInfo).C(jobCollection).Insert(info)
+			if err != nil {
+				log.Info("Could not insert record in mongo", "err", err, "database", databaseNameJobInfo,
+					"collection", jobCollection, "job", jobName)
+				return "", err
+			}
+		} else {
+			return "", err
+		}
 	}
 
 	// add timestamp to name of the training job

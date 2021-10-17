@@ -2,9 +2,14 @@ package mongo
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"gopkg.in/mgo.v2"
+)
+
+const (
+	maxGPUNum = 32
 )
 
 type TrainingJobInfo struct {
@@ -43,4 +48,33 @@ func ConnectMongo() *mgo.Session {
 		panic(err)
 	}
 	return session
+}
+
+// CreateBaseJobInfo creates a TrainingJobInfo that assumes linear speedup.
+func CreateBaseJobInfo(jobName string) TrainingJobInfo {
+	speedup := map[string]float32{"0": 0.0}
+	efficiency := map[string]float32{"0": 0.0}
+	time := map[string]float32{"0": 0.0}
+	for i := 1; i <= maxGPUNum+1; i++ {
+		speedup[strconv.Itoa(i)] = float32(i)
+		efficiency[strconv.Itoa(i)] = float32(1)
+		time[strconv.Itoa(i)] = float32(1)
+	}
+
+	info := TrainingJobInfo{
+		Name:                       jobName,
+		GpuTimeSec:                 0.0,
+		CurrentEpoch:               0,
+		Efficiency:                 efficiency,
+		ElaspedTimeSec:             0.0,
+		EpochTimeSec:               time,
+		EstimatedRemainningTimeSec: 0.0,
+		RemainningEpochs:           1,
+		RunningTimeSec:             0.0,
+		Speedup:                    speedup,
+		StepTimeSec:                time,
+		TotalEpochs:                1,
+	}
+
+	return info
 }
