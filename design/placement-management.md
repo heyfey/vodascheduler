@@ -32,6 +32,6 @@ Noted that we use the term migration is actually a simplification. Not like the 
 
 ## Algorithm
 
-See the [thesis](https://etd.lib.nctu.edu.tw/cgi-bin/gs32/hugsweb.cgi/ccd=xH0AX0/record?r1=1&h1=0#XXXX) section 3.4.2 for details.
+See the [thesis](https://ndltd.ncl.edu.tw/cgi-bin/gs32/gsweb.cgi/ccd=8fFRDT/record?r1=2&h1=0) section 3.4.2 for details.
 
 ## Alternatives Considered
