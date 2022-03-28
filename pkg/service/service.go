@@ -14,9 +14,9 @@ type Service struct {
 	Router *mux.Router
 }
 
-func NewService() *Service {
+func NewService(kubeConfig string) *Service {
 	s := &Service{
-		JM:     jobmaster.NewJobMaster(),
+		JM:     jobmaster.NewJobMaster(kubeConfig),
 		Router: mux.NewRouter(),
 	}
 	s.initRoutes()

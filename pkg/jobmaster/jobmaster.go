@@ -20,6 +20,7 @@ import (
 	yaml2 "k8s.io/apimachinery/pkg/util/yaml"
 
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -38,13 +39,20 @@ type JobMaster struct {
 	// metrics      *JobMasterMetrics
 }
 
-func NewJobMaster() *JobMaster {
+func NewJobMaster(kubeConfig string) *JobMaster {
 	log := logger.GetLogger()
 	defer logger.Flush()
 
 	schedulers := make(map[string]*scheduler.Scheduler)
 
-	config, err := rest.InClusterConfig()
+	var config *rest.Config
+	var err error
+	if kubeConfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
+	} else {
+		config, err = rest.InClusterConfig()
+	}
+
 	if err != nil {
 		log.Error(err, "Failed to build config")
 		logger.Flush()
