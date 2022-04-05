@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"k8s.io/klog/v2"
 )
 
 // Implementation of the E-Tiresias scheduling algorithm presented in
@@ -37,9 +37,6 @@ func NewElasticTiresias(totalGPU int, id string) *ElasticTiresias {
 }
 
 func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	result = make(map[string]int)
 	freeGPU := a.totalGPU
 	pendings := len(jobs)
@@ -73,8 +70,8 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 		})
 	}
 
-	// TODO: unable to log TiresiasThresholdsSec correctly
-	log.V(5).Info("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob, "compactionThreshold", ElasticTiresiasCompactionThreshold)
+	// TODO(heyfey): unable to log TiresiasThresholdsSec correctly
+	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob, "compactionThreshold", ElasticTiresiasCompactionThreshold)
 
 	// allocate the basic portion
 	for priority := 0; priority < TiresiasQueueNum; priority++ {
@@ -92,7 +89,7 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 	// If the number of pending jobs > compaction threshold, trigger the compaction
 	// by allocate each job with priority > 1 minGPU instead of NP.
 	if pendings > ElasticTiresiasCompactionThreshold {
-		log.V(5).Info("Before compaction", "jobs", jobs, "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+		klog.V(5).InfoS("Before compaction", "jobs", jobs, "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 		// compact the jobs with priority >= 1 from NP to minGPU
 		for priority := 1; priority < TiresiasQueueNum; priority++ {
 			for _, job := range queues[priority] {
@@ -103,10 +100,10 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 				}
 			}
 		}
-		log.V(5).Info("After compaction", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+		klog.V(5).InfoS("After compaction", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 	}
 
-	log.V(5).Info("Finished phase one scheduling", "result", result, "freeGPU", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Finished phase one scheduling", "result", result, "freeGPU", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	// remove the jobs that are already sastified or not possible to run
 	toRemove := make([]string, 0)
@@ -131,10 +128,10 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 			return gain[jobs[i].JobName] > gain[jobs[j].JobName]
 		})
 		job := jobs[0] // get the job with the most gain
-		log.V(5).Info("Found the next most gain job", "jobs", jobs, "freeGpu", freeGPU, "job", job.JobName, "gain", gain, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+		klog.V(5).InfoS("Found the next most gain job", "jobs", jobs, "freeGpu", freeGPU, "job", job.JobName, "gain", gain, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 		if gain[job.JobName] <= 0 {
 			// there won't be any efficiency gain to allocate extra gpu to any job
-			log.V(5).Info("No more gains", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+			klog.V(5).InfoS("No more gains", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 			break
 		}
 		// job should receive at least minGPU if it is scheduled
@@ -156,8 +153,8 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 		}
 	}
 
-	// TODO: unable to log TiresiasThresholdsSec correctly
-	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob, "compactionThreshold", ElasticTiresiasCompactionThreshold)
+	// TODO(heyfey): unable to log TiresiasThresholdsSec correctly
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob, "compactionThreshold", ElasticTiresiasCompactionThreshold)
 
 	validateResult(a.totalGPU, result, oriJobs)
 	return result
@@ -186,5 +183,6 @@ func index(jobs ReadyJobs, name string) int {
 			return i
 		}
 	}
+	klog.Flush()
 	panic(errors.New("Not found"))
 }

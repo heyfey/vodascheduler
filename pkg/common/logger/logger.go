@@ -5,9 +5,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/go-logr/logr"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 )
 
 // Constants for logging
@@ -43,17 +41,4 @@ func InitLogger() {
 	flag.Set("logtostderr", LogToStderr)
 	flag.Set("alsologtostderr", AlsoLogtoStderr)
 	flag.Parse()
-}
-
-// GetLogger constructs a new logger
-func GetLogger() logr.Logger {
-	logger := klogr.New()
-	return logger
-}
-
-// Flush simply calls klog.flush()
-// Remember to call this before return from functions do logging
-// to ensure output to file correctly.
-func Flush() {
-	klog.Flush()
 }

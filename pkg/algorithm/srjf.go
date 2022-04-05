@@ -5,8 +5,8 @@ package algorithm
 import (
 	"sort"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"k8s.io/klog/v2"
 )
 
 type SRJF struct {
@@ -25,9 +25,6 @@ func NewSRJF(totalGPU int, id string) *SRJF {
 }
 
 func (a *SRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	result = make(map[string]int)
 	freeGPU := a.totalGPU
 
@@ -36,7 +33,7 @@ func (a *SRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 		return jobs[i].Info.EstimatedRemainningTimeSec < jobs[j].Info.EstimatedRemainningTimeSec
 	})
 
-	log.V(5).Info("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	// allocate the basic portion
 	for _, job := range jobs {
@@ -48,7 +45,7 @@ func (a *SRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 		}
 	}
 
-	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	validateResult(a.totalGPU, result, jobs)
 	return result

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"k8s.io/klog/v2"
 )
 
 // Implementation of the DP algorithm presented by IBM, which aims to maximize
@@ -32,12 +32,9 @@ func NewFfDLOptimizer(totalGPU int, id string) *FfDLOptimizer {
 }
 
 func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	result = make(map[string]int)
 	if len(jobs) == 0 {
-		log.V(4).Info("Finished scheduling", "result", result, "FreeGPU", a.totalGPU, "scheduler", a.schedulerID,
+		klog.V(4).InfoS("Finished scheduling", "result", result, "FreeGPU", a.totalGPU, "scheduler", a.schedulerID,
 			"algorithm", a.algorithm)
 		return result
 	}
@@ -90,7 +87,7 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult
 			SOL[i][j] = 0
 		}
 	}
-	log.V(5).Info("DP initiated", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Initiated DP table", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	for j := 1; j <= J; j++ {
 		for k := 1; k <= K; k++ {
@@ -107,26 +104,26 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult
 			}
 		}
 	}
-	log.V(5).Info("Finished DP", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Finished DP", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	if P[J][K] <= 0 {
 		err := errors.New("infeasible")
-		log.Error(err, "Failed in scheduling algorithm", "scheduler", a.schedulerID, "algorithm", a.algorithm)
-		logger.Flush()
+		klog.ErrorS(err, "Failed in scheduling algorithm", "scheduler", a.schedulerID, "algorithm", a.algorithm)
+		klog.Flush()
 		panic(err)
 	}
 
 	j := J
 	k := K
 	for j > 0 {
-		log.V(5).Info("allocating...", "j", j, "k", k, "SOL", SOL[j][k], "job", feasibleJobs[j].JobName,
+		klog.V(5).InfoS("Allocating...", "j", j, "k", k, "SOL", SOL[j][k], "job", feasibleJobs[j].JobName,
 			"speedup", feasibleJobs[j].Info.Speedup, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 		result[feasibleJobs[j].JobName] = SOL[j][k]
 		k -= SOL[j][k]
 		j -= 1
 	}
-	log.V(4).Info("Finished scheduling", "result", result, "FreeGPU", k, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "FreeGPU", k, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	return result
 }

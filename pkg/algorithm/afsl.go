@@ -5,9 +5,9 @@ import (
 	"math"
 	"sort"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"k8s.io/klog/v2"
 )
 
 // Implementation of the AFS-L scheduling algorithm presented in
@@ -31,9 +31,6 @@ func NewAFSL(totalGPU int, id string) *AFSL {
 }
 
 func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	result = make(map[string]int)
 	for _, job := range jobs {
 		result[job.JobName] = 0
@@ -54,7 +51,7 @@ func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 		result[job.JobName] += 1
 		freeGPU -= 1
 
-		log.V(5).Info("Allocated 1 GPU to the top priority job", "job", job.JobName, "result", result, "freeGpu", freeGPU,
+		klog.V(5).InfoS("Allocated 1 GPU to the top priority job", "job", job.JobName, "result", result, "freeGpu", freeGPU,
 			"scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 		if result[job.JobName] >= job.Config.MaxGPU {
@@ -62,7 +59,7 @@ func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 		}
 	}
 
-	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 	return result
 }
 

@@ -3,7 +3,6 @@ module github.com/heyfey/vodascheduler
 go 1.13
 
 require (
-	github.com/go-logr/logr v0.1.0
 	github.com/gorilla/mux v1.8.0
 	github.com/heyfey/munkres v0.0.0-20210705070356-d4f16a25250d
 	github.com/imdario/mergo v0.3.12 // indirect

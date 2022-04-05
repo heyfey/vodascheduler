@@ -8,6 +8,7 @@ import (
 	"github.com/heyfey/vodascheduler/config"
 	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/service"
+	"k8s.io/klog/v2"
 )
 
 func main() {
@@ -19,18 +20,17 @@ func main() {
 	/* flags end */
 
 	logger.InitLogger()
-	log := logger.GetLogger()
-	defer logger.Flush()
+	defer klog.Flush()
 
-	log.Info(config.Msg, "version", config.Version)
-	log.Info("Starting service")
+	klog.InfoS(config.Msg, "version", config.Version)
+	klog.InfoS("Starting service")
 
 	if !flag.Parsed() {
 		flag.Parse()
 	}
-	log.Info("Listing flags", "kubeconfig", *kubeconfigPtr)
+	klog.InfoS("Listing flags", "kubeconfig", *kubeconfigPtr)
 
 	service := service.NewService(*kubeconfigPtr)
 	err := http.ListenAndServe(":"+config.Port, service.Router)
-	log.Error(err, "Service shut down")
+	klog.ErrorS(err, "Service shut down")
 }

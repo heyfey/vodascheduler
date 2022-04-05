@@ -5,8 +5,8 @@ package algorithm
 import (
 	"sort"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"k8s.io/klog/v2"
 )
 
 type ElasticFIFO struct {
@@ -25,9 +25,6 @@ func NewElasticFIFO(totalGPU int, id string) *ElasticFIFO {
 }
 
 func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	result = make(map[string]int)
 	sastified := make(map[string]bool)
 	freeGPU := a.totalGPU
@@ -37,7 +34,7 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 		return jobs[i].Submitted.Before(jobs[j].Submitted)
 	})
 
-	log.V(5).Info("Started scheduling", "jobs", jobs, "freeGPU", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGPU", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	// allocate the basic portion
 	for _, job := range jobs {
@@ -55,7 +52,7 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 		}
 	}
 
-	log.V(5).Info("Finished phase one scheduling", "result", result, "freeGPU", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Finished phase one scheduling", "result", result, "freeGPU", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	// allocate the remainning GPUs if there are any
 	// TODO: don't allocate more GPUs to a job if there is no speedup
@@ -73,7 +70,7 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 			}
 		}
 	}
-	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
 	validateResult(a.totalGPU, result, jobs)
 	return result

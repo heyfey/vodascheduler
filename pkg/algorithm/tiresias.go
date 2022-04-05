@@ -4,8 +4,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"k8s.io/klog/v2"
 )
 
 // Implementation of the Tiresias-L scheduling algorithm presented in
@@ -51,9 +51,6 @@ func NewTiresias(totalGPU int, id string) *Tiresias {
 }
 
 func (a *Tiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	result = make(map[string]int)
 	freeGPU := a.totalGPU
 
@@ -77,8 +74,8 @@ func (a *Tiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 		})
 	}
 
-	// TODO: unable to log TiresiasThresholdsSec correctly
-	log.V(5).Info("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob)
+	// TODO(heyfey): unable to log TiresiasThresholdsSec correctly
+	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob)
 
 	// allocate the basic portion
 	for priority := 0; priority < TiresiasQueueNum; priority++ {
@@ -93,7 +90,7 @@ func (a *Tiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	}
 
 	// TODO: unable to log TiresiasThresholdsSec correctly
-	log.V(4).Info("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob)
 
 	validateResult(a.totalGPU, result, jobs)
 	return result

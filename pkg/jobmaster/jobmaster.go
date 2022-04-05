@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
@@ -18,6 +18,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	yaml2 "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/klog/v2"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -39,24 +40,21 @@ type JobMaster struct {
 	// metrics      *JobMasterMetrics
 }
 
-func NewJobMaster(kubeConfig string) *JobMaster {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
+func NewJobMaster(kubeconfig string) *JobMaster {
 	schedulers := make(map[string]*scheduler.Scheduler)
 
 	var config *rest.Config
 	var err error
-	if kubeConfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
+	if kubeconfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	} else {
 		config, err = rest.InClusterConfig()
 	}
 
 	if err != nil {
-		log.Error(err, "Failed to build config")
-		logger.Flush()
-		panic(err.Error())
+		klog.ErrorS(err, "Failed to build config")
+		klog.Flush()
+		os.Exit(1)
 	}
 
 	session := mongo.ConnectMongo()
@@ -72,9 +70,9 @@ func NewJobMaster(kubeConfig string) *JobMaster {
 	gpuType := "default"
 	sched, err := scheduler.NewScheduler(gpuType, config, session.Copy(), databaseNameJobInfo)
 	if err != nil {
-		log.Error(err, "Failed to create scheduler", "gpuType", gpuType)
-		logger.Flush()
-		panic(err)
+		klog.ErrorS(err, "Failed to create scheduler", "scheduler", gpuType, "gpu", gpuType)
+		klog.Flush()
+		os.Exit(1)
 	} else {
 		schedulers[gpuType] = sched
 	}
@@ -87,7 +85,7 @@ func NewJobMaster(kubeConfig string) *JobMaster {
 
 	// start all schedulers
 	for gpuType, sched := range jm.schedulers {
-		log.Info("Starting scheduler", "gpuType", gpuType)
+		klog.InfoS("Starting scheduler", "scheduler", gpuType)
 		go sched.Run()
 	}
 	return jm
@@ -96,12 +94,9 @@ func NewJobMaster(kubeConfig string) *JobMaster {
 // CreateTrainingJob creates a new training job from bytes data, assigns it
 // to scheduler, triggers a resched and returns the name of the training job.
 func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	mpijob, err := bytesToMPIJob(data)
 	if err != nil {
-		log.Info("Failed to convert data to mpijob", "err", err)
+		klog.InfoS("Failed to convert data to mpijob", "err", err)
 		return "", err
 	}
 
@@ -128,13 +123,13 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	err = sess.DB(databaseNameJobInfo).C(jobCollection).Find(bson.M{"name": jobName}).One(&info)
 	if err != nil {
 		if err == mgo.ErrNotFound {
-			log.Info("Could not find job info in mongo", "err", err, "database", databaseNameJobInfo,
+			klog.InfoS("Could not find job info in mongo", "err", err, "database", databaseNameJobInfo,
 				"collection", jobCollection, "job", jobName)
 
 			info = mongo.CreateBaseJobInfo(jobName)
 			err = sess.DB(databaseNameJobInfo).C(jobCollection).Insert(info)
 			if err != nil {
-				log.Info("Could not insert record in mongo", "err", err, "database", databaseNameJobInfo,
+				klog.InfoS("Failed to insert record in mongo", "err", err, "database", databaseNameJobInfo,
 					"collection", jobCollection, "job", jobName)
 				return "", err
 			}
@@ -152,14 +147,15 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 
 	t, err := trainingjob.NewTrainingJob(*mpijob, jobCollection, now)
 	if err != nil {
-		log.Info("Failed to create training job", "err", err, "job", jobName)
+		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
 		return "", err
 	}
 
 	info = initJobInfo(info, jobName, t.Config.Epochs)
 	err = sess.DB(databaseNameJobInfo).C(jobCollection).Insert(info)
 	if err != nil {
-		log.Error(err, "Could not insert record to mongo", "database", databaseNameJobInfo, "collection", jobCollection, "job", jobName)
+		klog.ErrorS(err, "Failed to insert record to mongo", "database", databaseNameJobInfo,
+			"collection", jobCollection, "job", jobName)
 		return "", err
 	}
 	// sess.Close()
@@ -188,7 +184,7 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	//       Considering use a function to accept new job in scheduler.
 	sched.Metrics.JobsCreatedCounter.Inc()
 
-	log.Info("Training job created", "job", jobName)
+	klog.InfoS("Created training job", "job", jobName)
 	return jobName, nil
 }
 
@@ -264,9 +260,6 @@ func initJobInfo(basicInfo mongo.TrainingJobInfo, jobName string, epochs int) mo
 
 // DeleteTrainingJob deletes a training job from scheduler, and triggers a resched
 func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	// TODO: should this be locked?
 	schedID := jm.jobScheduler[jobName]
 	if schedID == "" {
@@ -277,8 +270,8 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	sched := jm.schedulers[schedID]
 	if sched == nil {
 		err := errors.New("Scheduler not found, this should not happen")
-		log.Error(err, "Scheduler not found, this should not happen", "scheduler", schedID)
-		logger.Flush()
+		klog.ErrorS(err, "Could not find sheduler, this should not happen", "scheduler", schedID)
+		klog.Flush()
 		panic(err)
 	}
 	delete(jm.schedulers, schedID)
@@ -298,7 +291,7 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	delete(sched.JobMetrics, jobName)
 	err := sched.Queue.Delete(jobName)
 	if err != nil {
-		log.Info("Deleting a completed job", "job", jobName)
+		klog.InfoS("Deleting a completed job", "job", jobName)
 	}
 
 	// TODO: remove job info from mongodb
@@ -315,7 +308,7 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 	//       Considering use a function to deleted new job in scheduler.
 	sched.Metrics.JobsDeletedCounter.Inc()
 
-	log.Info("Training job deleted", "job", jobName)
+	klog.InfoS("Deleted training job", "job", jobName)
 	return nil
 }
 

@@ -4,8 +4,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"gopkg.in/mgo.v2"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -35,17 +35,15 @@ type JobRunning struct {
 // It returns a pointer to the session, or an error if the connection attempt fails.
 // TODO: May require username and password in the future
 func ConnectMongo() *mgo.Session {
-	log := logger.GetLogger()
-	logger.Flush()
-
 	host := os.Getenv("MONGODB_SVC_SERVICE_HOST")
 	port := os.Getenv("MONGODB_SVC_SERVICE_PORT")
 
 	mongoURI := host + ":" + port
 	session, err := mgo.Dial(mongoURI)
 	if err != nil {
-		log.Error(err, "Could not connect to mongodb", "mongoURI", mongoURI)
-		panic(err)
+		klog.ErrorS(err, "Failed to connect to mongodb", "mongoURI", mongoURI)
+		klog.Flush()
+		os.Exit(1)
 	}
 	return session
 }

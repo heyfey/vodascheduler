@@ -2,11 +2,11 @@ package scheduler
 
 import (
 	"errors"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/heyfey/vodascheduler/pkg/algorithm"
-	"github.com/heyfey/vodascheduler/pkg/common/logger"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/rest"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -103,7 +104,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		JobMetrics:    map[string]*trainingjob.JobMetrics{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: algorithm.NewFIFO(gpus, id), // TODO
+		Algorithm: algorithm.NewElasticFIFO(gpus, id), // TODO
 
 		ReschedCh:           make(chan time.Time, reschedChannelSize),
 		StopSchedulerCh:     make(chan time.Time),
@@ -122,11 +123,8 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 }
 
 func (s *Scheduler) Run() {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	log.Info("Starting scheduler", "scheduler", s.SchedulerID)
-	defer log.Info("Stopping scheduler", "scheduler", s.SchedulerID)
+	klog.InfoS("Starting scheduler", "scheduler", s.SchedulerID)
+	defer klog.InfoS("Stopping scheduler", "scheduler", s.SchedulerID)
 
 	// defer close channels ..?
 	go s.watchingMPIJobModified()
@@ -136,8 +134,9 @@ func (s *Scheduler) Run() {
 		select {
 		case r := <-s.ReschedCh:
 			if r.After(s.lastResched) {
-				log.V(4).Info("Received resched event, may be blocked because of rate limit", "scheduler", s.SchedulerID,
-					"received", r, "lastResched", s.lastResched, "blockedUntil", s.reschedBlockedUntil)
+				klog.V(4).InfoS("Received rescheduling event, may be blocked because of rate limit",
+					"scheduler", s.SchedulerID, "receivedAtTimestamp", r, "lastReschedulingAtTimestamp", s.lastResched,
+					"blockedUntilTimestamp", s.reschedBlockedUntil)
 
 				for time.Now().Before(s.reschedBlockedUntil) {
 					time.Sleep(2)
@@ -148,7 +147,7 @@ func (s *Scheduler) Run() {
 			} else {
 				// The resched events with timestamp before s.lastResched are
 				// considered sastified, simply ignore them.
-				log.V(5).Info("Ignored resched event", "scheduler", s.SchedulerID, "received", r)
+				klog.V(5).InfoS("Ignored rescheduling event", "scheduler", s.SchedulerID, "receivedAtTimestamp", r)
 			}
 
 		case _ = <-s.StopSchedulerCh:
@@ -158,10 +157,8 @@ func (s *Scheduler) Run() {
 }
 
 func (s *Scheduler) resched() {
-	log := logger.GetLogger()
-	defer logger.Flush()
-	log.V(3).Info("Started resched", "scheduler", s.SchedulerID)
-	defer log.V(3).Info("Finished resched", "scheduler", s.SchedulerID)
+	klog.V(3).InfoS("Started rescheduling", "scheduler", s.SchedulerID)
+	defer klog.V(3).InfoS("Finished rescheduling", "scheduler", s.SchedulerID)
 
 	timer := prometheus.NewTimer(s.Metrics.reschedDuration)
 	defer timer.ObserveDuration()
@@ -188,7 +185,7 @@ func (s *Scheduler) resched() {
 		s.PlacementManager.Place(s.JobNumGPU)
 		s.SchedulerLock.RUnlock()
 	} else {
-		log.V(3).Info("Nothing changed, skipped ajust placements", "scheduler", s.SchedulerID)
+		klog.V(3).InfoS("Skipped ajust placement because nothing changed", "scheduler", s.SchedulerID)
 	}
 
 	s.Metrics.reschedCounter.Inc()
@@ -197,28 +194,25 @@ func (s *Scheduler) resched() {
 // updateAllJobsInfoFromDB finds information of all training jobs in mongodb
 // and update the training jobs' info with retrieved information
 func (s *Scheduler) updateAllJobsInfoFromDB() {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	sess := s.session.Clone()
 	defer sess.Close()
 
-	log.V(4).Info("Updating all jobs info", "scheduler", s.SchedulerID)
+	klog.V(4).InfoS("Updating all jobs info", "scheduler", s.SchedulerID)
 
 	for i := 0; i < s.Queue.Size(); i++ {
-		log.V(5).Info("Updating job info", "job", s.Queue.Queue[i].JobName)
+		klog.V(5).InfoS("Updating job info", "job", s.Queue.Queue[i].JobName)
 
 		t := &s.Queue.Queue[i]
 		info := mongo.TrainingJobInfo{}
 		err := sess.DB(s.database).C(t.JobCollection).Find(bson.M{"name": t.JobName}).One(&info)
 		if err != nil {
-			log.Error(err, "Could not update job info", "job", t.JobName)
+			klog.ErrorS(err, "Failed to update job info", "job", t.JobName)
 		}
 		t.Info.EstimatedRemainningTimeSec = info.EstimatedRemainningTimeSec
 		t.Info.Efficiency = info.Efficiency
 		t.Info.Speedup = info.Speedup
 
-		log.V(5).Info("Updated job info", "job", s.Queue.Queue[i].JobName)
+		klog.V(5).InfoS("Updated job info", "job", s.Queue.Queue[i].JobName)
 	}
 }
 
@@ -226,16 +220,14 @@ func (s *Scheduler) updateAllJobsInfoFromDB() {
 // these records would be fetched by the metrics collector
 // If we saves all jobs' scheduler status in mongodb, we may don't need this
 func (s *Scheduler) recordRunningJobsInDB() error {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	sess := s.session.Clone()
 	defer sess.Close()
 
 	// clear the whole collection
 	_, err := sess.DB(databaseNameRunningJobs).C(s.SchedulerID).RemoveAll(nil)
 	if err != nil {
-		log.Error(err, "Failed to remove all records in mongo collection", "scheduler", s.SchedulerID, "database", s.database, "collection", s.SchedulerID)
+		klog.ErrorS(err, "Failed to remove all records in mongo collection", "scheduler", s.SchedulerID,
+			"database", s.database, "collection", s.SchedulerID)
 		return err
 	}
 	// insert running jobs
@@ -244,7 +236,8 @@ func (s *Scheduler) recordRunningJobsInDB() error {
 			entry := mongo.JobRunning{Name: job}
 			err = sess.DB(databaseNameRunningJobs).C(s.SchedulerID).Insert(entry)
 			if err != nil {
-				log.Error(err, "Could not insert record to mongo", "scheduler", s.SchedulerID, "database", s.database, "collection", s.SchedulerID, "entry", entry)
+				klog.ErrorS(err, "Failed to insert record to mongo", "scheduler", s.SchedulerID, "database", s.database,
+					"collection", s.SchedulerID, "entry", entry)
 				return err // TODO: maybe should panic
 			}
 		}
@@ -297,21 +290,14 @@ func (s *Scheduler) compareResults(oldResult map[string]int) ([]string, []string
 	return halts, scaleIns, scaleOuts, starts
 }
 
-// startTrainingJobs creates MPIJobs of training jobs
+// startTrainingJobMany creates MPIJobs of training jobs
 func (s *Scheduler) startTrainingJobMany(jobs ...string) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	log.V(4).Info("Trying to start multiple training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
+	// Use term "start training job" in logging to distinguish between "create training job" in jobMaster
+	klog.V(4).InfoS("Starting training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
 
 	for _, job := range jobs {
-		log.V(5).Info("Trying to start training job", "job", job, "scheduler", s.SchedulerID)
+		s.startTrainingJob(job)
 
-		err := s.startTrainingJob(job)
-		if err != nil {
-			log.Error(err, "Could not start training job, this should not happen", "job", job, "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
-			// https://github.com/kubeflow/mpi-operator/blob/master/pkg/controllers/v1/mpi_job_controller.go#L875
-		}
 		// reset time metrics
 		s.JobMetrics[job].LastGpuTime = 0
 		s.JobMetrics[job].LastRunningTime = 0
@@ -322,21 +308,25 @@ func (s *Scheduler) startTrainingJobMany(jobs ...string) {
 				t.FirstStarted = time.Now()
 			}
 		}
-
-		log.V(5).Info("Training job started", "job", job, "scheduler", s.SchedulerID)
 	}
 }
 
-// startTrainingJobs creates MPIJob of a training job, with the number of
-// worker replicas equal to the number of GPU assigned
-// should aquire lock before calling it
+// startTrainingJob creates MPIJob of a training job, with the number of
+// worker replicas equal to the number of GPU assigned.
+// Should aquire lock before calling it.
 func (s *Scheduler) startTrainingJob(job string) error {
 	mpiJob := s.JobMPIJobs[job]
 	s.setMPIJobWorkerReplicas(mpiJob)
 
 	_, err := s.mpiClient.MPIJobs("default").Create(mpiJob)
-	if err == nil {
+	if err != nil {
+		// TODO(heyfey): SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+		klog.ErrorS(err, "Failed to start training job, this should not happen", "job", klog.KObj(mpiJob),
+			"scheduler", s.SchedulerID)
+		// https://github.com/kubeflow/mpi-operator/blob/master/pkg/controllers/v1/mpi_job_controller.go#L875
+	} else {
 		s.JobStatuses[job] = types.JobRunning
+		klog.V(5).InfoS("Started training job", "job", klog.KObj(mpiJob), "scheduler", s.SchedulerID)
 	}
 	return err
 }
@@ -347,29 +337,19 @@ func (s *Scheduler) setMPIJobWorkerReplicas(mpiJob *kubeflowv1.MPIJob) {
 	*workerSpec.Replicas = int32(s.JobNumGPU[mpiJob.GetName()])
 }
 
-// scaleTrainingJobs scales MPIJob of training jobs
+// scaleTrainingJobMany scales MPIJob of training jobs
 func (s *Scheduler) scaleTrainingJobMany(jobs ...string) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	log.V(4).Info("Trying to scale multiple training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
+	klog.V(4).InfoS("Scaling training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
 
 	for _, job := range jobs {
-		log.V(5).Info("Trying to scale training job", "job", job, "scheduler", s.SchedulerID)
-
-		err := s.scaleTrainingJob(job)
-		if err != nil {
-			log.Error(err, "Could not scale training job, this should not happen", "job", job, "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
-		}
-
-		log.V(5).Info("Training job scaled", "job", job, "scheduler", s.SchedulerID)
+		s.scaleTrainingJob(job)
 	}
 }
 
-// scaleOneTrainingJob gets and updates worker replicas of a MPIJob, wrapped with retry.RetryOnConflict
-// should acquire lock before calling it
+// scaleTrainingJob gets and updates worker replicas of a MPIJob, wrapped with retry.RetryOnConflict.
+// Should acquire lock before calling it.
 // Though jobs may completed or failed during the scaling, it's no harm to update a completed/failed job,
-// and the results would be fixed by the following resched
+// and the results would be fixed by the following rescheduling
 func (s *Scheduler) scaleTrainingJob(job string) error {
 	// TODO: may want to check job status == types.JobRunning
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -381,41 +361,44 @@ func (s *Scheduler) scaleTrainingJob(job string) error {
 		s.setMPIJobWorkerReplicas(mpiJob)
 
 		_, err = s.mpiClient.MPIJobs("default").Update(mpiJob)
-		if err != nil {
-			return err
-		}
 		return err
 	})
+
+	// TODO:(heyfey): namespace
+	if err != nil {
+		klog.ErrorS(err, "Failed to scale training job, this should not happen", "job", klog.KRef("default", job),
+			"scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+	} else {
+		klog.V(5).InfoS("Scaled training job", "job", klog.KRef("default", job), "scheduler", s.SchedulerID)
+	}
 	return err
 }
 
-// haltTrainingJobs deletes MPIJobs of training jobs
+// haltTrainingJobMany deletes MPIJobs of training jobs
 func (s *Scheduler) haltTrainingJobMany(jobs ...string) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	log.V(4).Info("Trying to delete multiple training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
+	// Use term "stop training job" in logging to distinguish between "delete training job" in jobMaster
+	klog.V(4).InfoS("Stopping training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
 
 	for _, job := range jobs {
-		log.V(5).Info("Trying to delete training job", "job", job, "scheduler", s.SchedulerID)
+		s.haltTrainingJob(job)
 
-		err := s.haltTrainingJob(job)
-		if err != nil {
-			log.Error(err, "Could not delete training job, this should not happen", "job", job, "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
-			// TODO: error handling if not delete
-		}
 		// reset time metrics
 		s.JobMetrics[job].LastWaitingTime = 0
-
-		log.V(5).Info("Training job deleted", "job", job, "scheduler", s.SchedulerID)
 	}
 }
 
-// haltOneTrainingJob deletes MPIJob of a training job
-// should acquire lock before calling it
+// haltTrainingJob deletes MPIJob of a training job.
+// Should acquire lock before calling it.
 func (s *Scheduler) haltTrainingJob(job string) error {
+	//TODO(heyfey): namespace
 	err := s.mpiClient.MPIJobs("default").Delete(job, &metav1.DeleteOptions{})
-	if err == nil {
+	if err != nil {
+		klog.ErrorS(err, "Failed to stop training job, this should not happen", "job", klog.KRef("default", job),
+			"scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+		// TODO: error handling if not delete
+	} else {
+		klog.V(5).InfoS("Stopped training job", "job", klog.KRef("default", job), "scheduler", s.SchedulerID)
+
 		s.JobStatuses[job] = types.JobWaiting
 	}
 	return err
@@ -423,32 +406,30 @@ func (s *Scheduler) haltTrainingJob(job string) error {
 
 // watchingMPIJobModified keep watching events of MPIJobs and handles it if needed
 func (s *Scheduler) watchingMPIJobModified() {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	// mpijobs will have the latest rescouce version
 	mpijobs, err := s.mpiClient.MPIJobs("").List(metav1.ListOptions{})
 	if err != nil {
-		log.Error(err, "Failed to list MPIJobs", "scheduler", s.SchedulerID)
-		logger.Flush()
-		panic(err)
+		klog.ErrorS(err, "Failed to list MPIJob", "scheduler", s.SchedulerID)
+		klog.Flush()
+		os.Exit(1)
 	}
 
 	// TODO: may want to specify namespace
 	watcher, err := watchtools.NewRetryWatcher(mpijobs.ResourceVersion, s.mpiClient.MPIJobs(""))
 	if err != nil {
-		log.Error(err, "Failed create watcher", "scheduler", s.SchedulerID)
-		logger.Flush()
-		panic(err)
+		klog.ErrorS(err, "Failed to create watcher", "scheduler", s.SchedulerID)
+		klog.Flush()
+		os.Exit(1)
 	}
 
-	log.Info("Start watching mpijob", "scheduler", s.SchedulerID)
+	klog.InfoS("Started watching MPIJob", "scheduler", s.SchedulerID)
 
 	for event := range watcher.ResultChan() {
 		if event.Type == watch.Modified {
 			m, ok := event.Object.(*kubeflowv1.MPIJob)
 			if !ok {
-				log.Error(errors.New("unexpected type"), "Watcher got unexpected type of event", "scheduler", s.SchedulerID)
+				klog.ErrorS(errors.New("unexpected type"), "Watcher got unexpected type of event",
+					"scheduler", s.SchedulerID)
 				continue
 			}
 			// get current phase from the last element of Conditions
@@ -481,14 +462,11 @@ func (s *Scheduler) watchingMPIJobModified() {
 // It should only be called by watchingMPIJobModified, and should
 // acquire lock before calling it
 func (s *Scheduler) handleJobCompleted(job string) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	log.Info("Training job completed", "job", job, "scheduler", s.SchedulerID,
+	klog.InfoS("Training job completed", "job", klog.KRef("default", job), "scheduler", s.SchedulerID,
 		"waitedTotalSeconds", s.JobMetrics[job].WaitingTime.Seconds(),
 		"ranTotalSeconds", s.JobMetrics[job].RunningTime.Seconds(),
 		"gpuTotalSeconds", s.JobMetrics[job].GpuTime.Seconds(),
-		"elaspedTotalSeconds", s.JobMetrics[job].TotalTime.Seconds())
+		"elaspedTotalSeconds", s.JobMetrics[job].TotalTime.Seconds()) // TODO(heyfey): namespace
 
 	s.JobStatuses[job] = types.JobCompleted
 	s.Queue.Delete(job)
@@ -507,10 +485,7 @@ func (s *Scheduler) handleJobCompleted(job string) {
 // It should only be called by watchingMPIJobModified, and should
 // acquire lock before calling it
 func (s *Scheduler) handleJobFailed(job string) {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
-	log.Info("Training job failed", "job", job, "scheduler", s.SchedulerID)
+	klog.InfoS("Training job failed", "job", job, "scheduler", s.SchedulerID)
 
 	s.JobStatuses[job] = types.JobFailed
 	s.Queue.Delete(job)
@@ -534,9 +509,6 @@ func (s *Scheduler) Stop() {
 // Depends on the scheduling algorithm, it may also checks for priority changes
 // and/or triggers resched.
 func (s *Scheduler) updateTimeMetrics() {
-	log := logger.GetLogger()
-	defer logger.Flush()
-
 	for {
 		time.Sleep(time.Duration(rateLimitTimeMetricsSeconds) * time.Second)
 
@@ -564,20 +536,23 @@ func (s *Scheduler) updateTimeMetrics() {
 			if (s.Algorithm.GetName() == "Tiresias" || s.Algorithm.GetName() == "ElasticTiresias") && (status == types.JobRunning || status == types.JobWaiting) {
 				t, err := s.Queue.Get(job)
 				if err != nil {
-					log.Error(err, "This should not happen", "job", job, "scheduler", s.SchedulerID)
+					klog.ErrorS(err, "Could not find training job in queue, this should not happen", "job", job,
+						"scheduler", s.SchedulerID)
 					continue
 				}
 				// demote the job if last GPU time crosses threshold
 				if s.JobMetrics[job].LastGpuTime.Seconds() > algorithm.TiresiasThresholdsSec[t.Priority] {
 					t.Priority = algorithm.TiresiasDemotePriority(t.Priority)
 					priorityChanged = true
-					log.V(4).Info("Priority demoted to training job", "job", job, "priority", t.Priority, "scheduler", s.SchedulerID)
+					klog.V(4).InfoS("Demoted priority to training job", "job", job, "priority", t.Priority,
+						"scheduler", s.SchedulerID)
 
 					// promote the job if last waiting time longer than STARVELIMIT
 				} else if s.JobMetrics[job].LastWaitingTime.Seconds() >= s.JobMetrics[job].LastRunningTime.Seconds()*float64(algorithm.TiresiasPromoteKnob) && t.Priority > 0 {
 					t.Priority = algorithm.TiresiasPromotePriority(t.Priority)
 					priorityChanged = true
-					log.V(4).Info("Priority promoted to training job", "job", job, "priority", t.Priority, "scheduler", s.SchedulerID)
+					klog.V(4).InfoS("Promoted priority to training job", "job", job, "priority", t.Priority,
+						"scheduler", s.SchedulerID)
 				}
 			}
 		}
@@ -585,7 +560,7 @@ func (s *Scheduler) updateTimeMetrics() {
 
 		// trigger resched if priority changed
 		if priorityChanged {
-			log.V(3).Info("Priority changed", "scheduler", s.SchedulerID)
+			klog.V(3).InfoS("Triggered rescheduling because of priority changed", "scheduler", s.SchedulerID)
 			s.ReschedCh <- time.Now()
 		}
 	}

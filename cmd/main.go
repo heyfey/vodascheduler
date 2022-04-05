@@ -1,13 +1,13 @@
 package main
 
 import (
-	"log"
 	"os"
 	"sort"
 
 	"github.com/heyfey/vodascheduler/cmd/cmd"
 	"github.com/heyfey/vodascheduler/config"
 	"github.com/urfave/cli/v2"
+	"k8s.io/klog/v2"
 )
 
 func main() {
@@ -53,6 +53,7 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		klog.ErrorS(err, "Failed")
+		os.Exit(1)
 	}
 }
