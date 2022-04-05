@@ -145,7 +145,7 @@ func (s *Scheduler) Run() {
 				s.lastResched = time.Now()
 				s.reschedBlockedUntil = s.lastResched.Add(time.Second * reschedRateLimitSeconds)
 			} else {
-				// The resched events with timestamp before s.lastResched are
+				// The rescheduling events with timestamp before s.lastResched are
 				// considered sastified, simply ignore them.
 				klog.V(5).InfoS("Ignored rescheduling event", "scheduler", s.SchedulerID, "receivedAtTimestamp", r)
 			}
@@ -458,7 +458,7 @@ func (s *Scheduler) watchingMPIJobModified() {
 	}
 }
 
-// handleJobCompleted makes essential updates and sends resched signal
+// handleJobCompleted makes essential updates and sends rescheduling signal.
 // It should only be called by watchingMPIJobModified, and should
 // acquire lock before calling it
 func (s *Scheduler) handleJobCompleted(job string) {
@@ -477,7 +477,7 @@ func (s *Scheduler) handleJobCompleted(job string) {
 	return
 }
 
-// handleJobFailed makes essential updates and sends resched signal.
+// handleJobFailed makes essential updates and sends rescheduling signal.
 // Note that if a job uses OnFailure restart policy, the watcher won't receive
 // a event with JobFailed phase even when the job fails, thus this function
 // won't be called in this situation.
@@ -507,13 +507,13 @@ func (s *Scheduler) Stop() {
 // updateTimeMetrics updates time metrics of all training jobs every
 // rateLimitTimeMetricsSeconds seconds.
 // Depends on the scheduling algorithm, it may also checks for priority changes
-// and/or triggers resched.
+// and/or triggers rescheduling.
 func (s *Scheduler) updateTimeMetrics() {
 	for {
 		time.Sleep(time.Duration(rateLimitTimeMetricsSeconds) * time.Second)
 
 		// some algorithms change priority of training jobs according to time metrics,
-		// and may trigger resched if that happens.
+		// and may trigger rescheduling if that happens.
 		priorityChanged := false
 
 		s.SchedulerLock.Lock()
@@ -558,7 +558,7 @@ func (s *Scheduler) updateTimeMetrics() {
 		}
 		s.SchedulerLock.Unlock()
 
-		// trigger resched if priority changed
+		// trigger rescheduling if priority changed
 		if priorityChanged {
 			klog.V(3).InfoS("Triggered rescheduling because of priority changed", "scheduler", s.SchedulerID)
 			s.ReschedCh <- time.Now()
