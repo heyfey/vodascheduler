@@ -7,7 +7,7 @@ require (
 	github.com/heyfey/munkres v0.0.0-20210705070356-d4f16a25250d
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/kubeflow/common v0.3.3
-	github.com/kubeflow/mpi-operator v0.2.4-0.20210421114141-298b527bb033
+	github.com/kubeflow/mpi-operator v0.3.0
 	github.com/prometheus/client_golang v1.5.1
 	github.com/urfave/cli/v2 v2.3.0
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
@@ -23,5 +23,4 @@ replace (
 	k8s.io/api => k8s.io/api v0.15.10
 	k8s.io/apimachinery => k8s.io/apimachinery v0.15.10
 	k8s.io/client-go => k8s.io/client-go v0.15.10
-	k8s.io/sample-controller => k8s.io/sample-controller v0.15.10
 )
