@@ -1,6 +1,7 @@
 package placement
 
 import (
+	"context"
 	"errors"
 	"os"
 	"sort"
@@ -136,9 +137,9 @@ func (pm *PlacementManager) addPodToleration(pod *corev1.Pod, toleration corev1.
 		"scheduler", pm.SchedulerID)
 
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() (err error) {
-		pod, err := pm.kClient.CoreV1().Pods("default").Get(pod.GetName(), metav1.GetOptions{}) // TODO: set namespace
+		pod, err := pm.kClient.CoreV1().Pods("default").Get(context.TODO(), pod.GetName(), metav1.GetOptions{}) // TODO: set namespace
 		pod.Spec.Tolerations = append(pod.Spec.Tolerations, toleration)
-		_, err = pm.kClient.CoreV1().Pods("default").Update(pod) // TODO: set namespace
+		_, err = pm.kClient.CoreV1().Pods("default").Update(context.TODO(), pod, metav1.UpdateOptions{}) // TODO: set namespace
 		return err
 	})
 	if err != nil {
@@ -420,7 +421,7 @@ func (pm *PlacementManager) updatePodNodeName() []podName {
 // will be added to pods by the informer callbacks of the placement manager.
 func (pm *PlacementManager) deletePods(podList []podName) {
 	for _, pod := range podList {
-		err := pm.kClient.CoreV1().Pods("default").Delete(string(pod), &metav1.DeleteOptions{}) // TODO: set namespace
+		err := pm.kClient.CoreV1().Pods("default").Delete(context.TODO(), string(pod), metav1.DeleteOptions{}) // TODO: set namespace
 		if err != nil {
 			klog.ErrorS(err, "Failed to delete pod for migration", klog.KRef("default", string(pod)),
 				"scheduler", pm.SchedulerID) // TODO: error handling
