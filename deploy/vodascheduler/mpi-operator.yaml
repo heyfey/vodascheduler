@@ -159,7 +159,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: mpi-operator
-  namespace: mpi-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -189,12 +188,14 @@ spec:
       serviceAccountName: mpi-operator
       containers:
       - name: mpi-operator
-        image: heyfey/mpi-operator:latest
+        image: mpioperator/mpi-operator:latest
         command: ["/opt/mpi-operator.v1"]
         args: [
           "-alsologtostderr",
           "--kubectl-delivery-image",
           "mpioperator/kubectl-delivery:latest",
+          # "--namespace",
+          # "mpi-operator",
           "--lock-namespace",
           "mpi-operator"
         ]

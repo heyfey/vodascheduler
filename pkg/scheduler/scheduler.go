@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
 	"os"
 	"sync"
@@ -13,14 +14,15 @@ import (
 	"github.com/heyfey/vodascheduler/pkg/placement"
 	kubeflowcommon "github.com/kubeflow/common/pkg/apis/common/v1"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
+	mpijobclientset "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned"
 	client "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned/typed/kubeflow/v1"
+	kubeflowinformers "github.com/kubeflow/mpi-operator/pkg/client/informers/externalversions"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
-	watchtools "k8s.io/client-go/tools/watch"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
@@ -38,9 +40,10 @@ const (
 )
 
 type Scheduler struct {
-	SchedulerID  string
-	GPUAvailable int
-	mpiClient    *client.KubeflowV1Client
+	SchedulerID    string
+	GPUAvailable   int
+	mpiClient      *client.KubeflowV1Client
+	mpiJobInformer cache.SharedIndexInformer
 
 	Queue *TrainingJobQueue
 	// MPIJob representations of each training job
@@ -92,10 +95,18 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		return nil, err
 	}
 
+	mpiJobClientSet, err := mpijobclientset.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactory(mpiJobClientSet, 0)
+	mpiJobInformer := kubeflowInformerFactory.Kubeflow().V1().MPIJobs().Informer()
+
 	s := &Scheduler{
-		SchedulerID:  id,
-		GPUAvailable: gpus, // TODO
-		mpiClient:    c,
+		SchedulerID:    id,
+		GPUAvailable:   gpus, // TODO
+		mpiClient:      c,
+		mpiJobInformer: mpiJobInformer,
 
 		Queue:         q,
 		JobMPIJobs:    map[string]*kubeflowv1.MPIJob{},
@@ -116,8 +127,15 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 
 		PlacementManager: pm,
 	}
-
 	s.Metrics = s.initSchedulerMetrics()
+
+	// setup informer callbacks
+	// TODO(heyfey): set namespace and replace with FilteringResourceEventHandler
+	s.mpiJobInformer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			UpdateFunc: s.updateMPIJob,
+		},
+	)
 
 	return s, nil
 }
@@ -127,8 +145,19 @@ func (s *Scheduler) Run() {
 	defer klog.InfoS("Stopping scheduler", "scheduler", s.SchedulerID)
 
 	// defer close channels ..?
-	go s.watchingMPIJobModified()
+
 	go s.updateTimeMetrics()
+
+	stopInformerCh := make(chan struct{})
+	go s.mpiJobInformer.Run(stopInformerCh)
+	if !cache.WaitForCacheSync(
+		stopInformerCh,
+		s.mpiJobInformer.HasSynced) {
+		err := errors.New("Failed to WaitForCacheSync")
+		klog.ErrorS(err, "Scheduler failed to WaitForCacheSync", "scheduler", s.SchedulerID)
+		klog.Flush()
+		os.Exit(1)
+	}
 
 	for {
 		select {
@@ -151,6 +180,7 @@ func (s *Scheduler) Run() {
 			}
 
 		case _ = <-s.StopSchedulerCh:
+			stopInformerCh <- struct{}{}
 			return
 		}
 	}
@@ -318,7 +348,7 @@ func (s *Scheduler) startTrainingJob(job string) error {
 	mpiJob := s.JobMPIJobs[job]
 	s.setMPIJobWorkerReplicas(mpiJob)
 
-	_, err := s.mpiClient.MPIJobs("default").Create(mpiJob)
+	_, err := s.mpiClient.MPIJobs("default").Create(context.TODO(), mpiJob, metav1.CreateOptions{})
 	if err != nil {
 		// TODO(heyfey): SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
 		klog.ErrorS(err, "Failed to start training job, this should not happen", "job", klog.KObj(mpiJob),
@@ -353,14 +383,14 @@ func (s *Scheduler) scaleTrainingJobMany(jobs ...string) {
 func (s *Scheduler) scaleTrainingJob(job string) error {
 	// TODO: may want to check job status == types.JobRunning
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mpiJob, err := s.mpiClient.MPIJobs("default").Get(job, metav1.GetOptions{}) //TODO: namespace
+		mpiJob, err := s.mpiClient.MPIJobs("default").Get(context.TODO(), job, metav1.GetOptions{}) //TODO: namespace
 		if err != nil {
 			return err
 		}
 
 		s.setMPIJobWorkerReplicas(mpiJob)
 
-		_, err = s.mpiClient.MPIJobs("default").Update(mpiJob)
+		_, err = s.mpiClient.MPIJobs("default").Update(context.TODO(), mpiJob, metav1.UpdateOptions{})
 		return err
 	})
 
@@ -391,7 +421,7 @@ func (s *Scheduler) haltTrainingJobMany(jobs ...string) {
 // Should acquire lock before calling it.
 func (s *Scheduler) haltTrainingJob(job string) error {
 	//TODO(heyfey): namespace
-	err := s.mpiClient.MPIJobs("default").Delete(job, &metav1.DeleteOptions{})
+	err := s.mpiClient.MPIJobs("default").Delete(context.TODO(), job, metav1.DeleteOptions{})
 	if err != nil {
 		klog.ErrorS(err, "Failed to stop training job, this should not happen", "job", klog.KRef("default", job),
 			"scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
@@ -404,63 +434,42 @@ func (s *Scheduler) haltTrainingJob(job string) error {
 	return err
 }
 
-// watchingMPIJobModified keep watching events of MPIJobs and handles it if needed
-func (s *Scheduler) watchingMPIJobModified() {
-	// mpijobs will have the latest rescouce version
-	mpijobs, err := s.mpiClient.MPIJobs("").List(metav1.ListOptions{})
-	if err != nil {
-		klog.ErrorS(err, "Failed to list MPIJob", "scheduler", s.SchedulerID)
-		klog.Flush()
-		os.Exit(1)
+// updateMPIJob handles completion and failure of MPIJobs
+func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
+	mpiJob, ok := newObj.(*kubeflowv1.MPIJob)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected MPIJob type"), "Failed to update MPIJob", "MPIJob", klog.KObj(mpiJob),
+			"scheduler", s.SchedulerID)
+		return
 	}
-
-	// TODO: may want to specify namespace
-	watcher, err := watchtools.NewRetryWatcher(mpijobs.ResourceVersion, s.mpiClient.MPIJobs(""))
-	if err != nil {
-		klog.ErrorS(err, "Failed to create watcher", "scheduler", s.SchedulerID)
-		klog.Flush()
-		os.Exit(1)
+	klog.V(5).InfoS("MPIJob updated", "mpijob", klog.KObj(mpiJob), "scheduler", s.SchedulerID)
+	// get current phase from the last element of Conditions
+	// TODO: determine phase using existing api
+	// https://github.com/kubeflow/mpi-operator/blob/6ee71d45dde0e71229b7fa91065e0c6bb503cd92/pkg/controllers/v1/mpi_job_controller_status.go#L86
+	last := len(mpiJob.Status.Conditions) - 1
+	if last < 0 {
+		return
 	}
-
-	klog.InfoS("Started watching MPIJob", "scheduler", s.SchedulerID)
-
-	for event := range watcher.ResultChan() {
-		if event.Type == watch.Modified {
-			m, ok := event.Object.(*kubeflowv1.MPIJob)
-			if !ok {
-				klog.ErrorS(errors.New("unexpected type"), "Watcher got unexpected type of event",
-					"scheduler", s.SchedulerID)
-				continue
-			}
-			// get current phase from the last element of Conditions
-			// TODO: determine phase using existing api
-			// https://github.com/kubeflow/mpi-operator/blob/6ee71d45dde0e71229b7fa91065e0c6bb503cd92/pkg/controllers/v1/mpi_job_controller_status.go#L86
-			last := len(m.Status.Conditions) - 1
-			if last < 0 {
-				continue
-			}
-			phase := m.Status.Conditions[last].Type
-			name := m.GetName()
-			if phase == kubeflowcommon.JobSucceeded {
-				s.SchedulerLock.Lock()
-				if s.JobStatuses[name] != types.JobCompleted { // is the first succeeded event
-					s.handleJobCompleted(name)
-				}
-				s.SchedulerLock.Unlock()
-			} else if phase == kubeflowcommon.JobFailed {
-				s.SchedulerLock.Lock()
-				if s.JobStatuses[name] != types.JobFailed { // is the first failed event
-					s.handleJobFailed(name)
-				}
-				s.SchedulerLock.Unlock()
-			}
+	phase := mpiJob.Status.Conditions[last].Type
+	name := mpiJob.GetName()
+	if phase == kubeflowcommon.JobSucceeded {
+		s.SchedulerLock.Lock()
+		if s.JobStatuses[name] != types.JobCompleted { // is the first succeeded event
+			s.handleJobCompleted(name)
 		}
+		s.SchedulerLock.Unlock()
+	} else if phase == kubeflowcommon.JobFailed {
+		s.SchedulerLock.Lock()
+		if s.JobStatuses[name] != types.JobFailed { // is the first failed event
+			s.handleJobFailed(name)
+		}
+		s.SchedulerLock.Unlock()
 	}
 }
 
-// handleJobCompleted makes essential updates and sends rescheduling signal.
-// It should only be called by watchingMPIJobModified, and should
-// acquire lock before calling it
+// handleJobCompleted makes essential updates and sends resched signal
+// It should only be called by updateMPIJob, and should acquire lock before
+// calling it
 func (s *Scheduler) handleJobCompleted(job string) {
 	klog.InfoS("Training job completed", "job", klog.KRef("default", job), "scheduler", s.SchedulerID,
 		"waitedTotalSeconds", s.JobMetrics[job].WaitingTime.Seconds(),
@@ -482,8 +491,8 @@ func (s *Scheduler) handleJobCompleted(job string) {
 // a event with JobFailed phase even when the job fails, thus this function
 // won't be called in this situation.
 // (Do not use ExitCode since there are hanging issue when job fails)
-// It should only be called by watchingMPIJobModified, and should
-// acquire lock before calling it
+// It should only be called by updateMPIJob, and should acquire lock before
+// calling it
 func (s *Scheduler) handleJobFailed(job string) {
 	klog.InfoS("Training job failed", "job", job, "scheduler", s.SchedulerID)
 
