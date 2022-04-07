@@ -60,5 +60,6 @@ spec:
   selector:
     app: mongodb
   ports:
-    - protocol: TCP
+    - name: voda-mongodb
+      protocol: TCP
       port: 27017

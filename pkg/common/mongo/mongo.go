@@ -1,6 +1,8 @@
 package mongo
 
 import (
+	"fmt"
+	"net"
 	"os"
 	"strconv"
 
@@ -31,19 +33,43 @@ type JobRunning struct {
 	Name string `bson:"name" json:"name"`
 }
 
-// ConnectMongo connects to a mongo session.
-// It returns a pointer to the session, or an error if the connection attempt fails.
-// TODO: May require username and password in the future
+// ConnectMongo connects to a mongo session. It returns a pointer to the session,
+// TODO(heyfey): or an error if the connection attempt fails.
+// TODO(heyfey): May require username and password in the future
 func ConnectMongo() *mgo.Session {
-	host := os.Getenv("MONGODB_SVC_SERVICE_HOST")
-	port := os.Getenv("MONGODB_SVC_SERVICE_PORT")
 
-	mongoURI := host + ":" + port
+	// Find service IP and port from kube-dns (CoreDNS)
+	// my-svc.my-namespace.svc.cluster-domain.example
+	host := "mongodb-svc.voda-scheduler.svc.cluster.local"
+	iprecords, err := net.LookupIP("mongodb-svc.voda-scheduler.svc.cluster.local")
+	if err != nil {
+		klog.ErrorS(err, "Failed to look up mongodb service host IP", "host", host)
+		klog.Flush()
+		os.Exit(1)
+	}
+	ip := iprecords[0]
+
+	// _my-port-name._my-port-protocol.my-svc.my-namespace.svc.cluster-domain.example
+	portName := "voda-mongodb"
+	protocal := "tcp"
+	domainName := "mongodb-svc.voda-scheduler.svc.cluster.local"
+	_, addrs, err := net.LookupSRV(portName, protocal, domainName)
+	if err != nil {
+		klog.ErrorS(err, "Failed to look up mongodb service port", "portName", portName, "protocal", protocal,
+			"domainName", domainName)
+		klog.Flush()
+		os.Exit(1)
+	}
+	port := addrs[0].Port
+
+	mongoURI := ip.String() + ":" + fmt.Sprint(port)
 	session, err := mgo.Dial(mongoURI)
 	if err != nil {
 		klog.ErrorS(err, "Failed to connect to mongodb", "mongoURI", mongoURI)
 		klog.Flush()
 		os.Exit(1)
+	} else {
+		klog.InfoS("Connected to mongodb", "mongoURI", mongoURI)
 	}
 	return session
 }
