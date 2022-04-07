@@ -79,7 +79,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: voda-scheduler
+  name: voda-scheduler-svc
   namespace: voda-scheduler
   labels:
     app: voda-scheduler
