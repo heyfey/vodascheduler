@@ -31,3 +31,12 @@ func isMPIJobLauncher(pod *corev1.Pod) bool {
 func isMPIJobWorker(pod *corev1.Pod) bool {
 	return pod.GetLabels()[labelMPIRoleType] == worker
 }
+
+func hasToleration(pod *corev1.Pod, toleration corev1.Toleration) bool {
+	for _, t := range pod.Spec.Tolerations {
+		if t.MatchToleration(&toleration) {
+			return true
+		}
+	}
+	return false
+}

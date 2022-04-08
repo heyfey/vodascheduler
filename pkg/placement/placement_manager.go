@@ -82,7 +82,8 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	// setup informer callbacks
 	pm.podInformer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
-			AddFunc: pm.addPod,
+			AddFunc:    pm.addPod,
+			UpdateFunc: pm.updatePod,
 		},
 	)
 
@@ -119,15 +120,42 @@ func (pm *PlacementManager) addPod(obj interface{}) {
 	}
 	klog.V(5).InfoS("Pod added", "pod", klog.KObj(pod), "scheduler", pm.SchedulerID)
 
-	if isMPIJobLauncher(pod) {
+	if isMPIJobLauncher(pod) && !hasToleration(pod, launcherToleration) {
 		pm.addPodToleration(pod, launcherToleration)
 	} else if isMPIJobWorker(pod) {
 		pm.placementLock.RLock()
 		nodeName, ok := pm.podNodeName[podName(pod.GetName())]
 		if ok {
-			pm.addPodToleration(pod, pm.nodeStates[nodeName].toleration)
+			t := pm.nodeStates[nodeName].toleration
+			if !hasToleration(pod, t) {
+				pm.addPodToleration(pod, t)
+			}
+		} else {
+			klog.Flush()
+			panic(errors.New("Could not find pod in podNodeName table"))
 		}
 		pm.placementLock.RUnlock()
+	}
+}
+
+func (pm *PlacementManager) updatePod(oldObj interface{}, newObj interface{}) {
+	oldPod, ok := oldObj.(*corev1.Pod)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod", "pod", klog.KObj(oldPod),
+			"scheduler", pm.SchedulerID)
+		return
+	}
+	newPod, ok := newObj.(*corev1.Pod)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod", "pod", klog.KObj(newPod),
+			"scheduler", pm.SchedulerID)
+		return
+	}
+	// Informer may deliver an Update event with UID changed if a delete is
+	// immediately followed by a create, so manually decompose it.
+	if oldPod.UID != newPod.UID {
+		pm.addPod(newObj)
+		return
 	}
 }
 
