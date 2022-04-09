@@ -73,6 +73,7 @@ type Scheduler struct {
 	// metrics       *SchedulerMetrics
 
 	PlacementManager *placement.PlacementManager
+	ticker           time.Ticker
 }
 
 // NewScheduler creates a new scheduler
@@ -125,6 +126,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		database: database,
 
 		PlacementManager: pm,
+		ticker:           *time.NewTicker(rateLimitTimeMetricsSeconds * time.Second),
 	}
 	s.Metrics = s.initSchedulerMetrics()
 
@@ -145,7 +147,8 @@ func (s *Scheduler) Run() {
 
 	// defer close channels ..?
 
-	go s.updateTimeMetrics()
+	stopTickerCh := make(chan bool)
+	go s.updateTimeMetrics(stopTickerCh)
 
 	stopInformerCh := make(chan struct{})
 	go s.mpiJobInformer.Run(stopInformerCh)
@@ -179,6 +182,7 @@ func (s *Scheduler) Run() {
 			}
 
 		case _ = <-s.StopSchedulerCh:
+			stopTickerCh <- true
 			stopInformerCh <- struct{}{}
 			return
 		}
@@ -510,60 +514,66 @@ func (s *Scheduler) Stop() {
 // rateLimitTimeMetricsSeconds seconds.
 // Depends on the scheduling algorithm, it may also checks for priority changes
 // and/or triggers rescheduling.
-func (s *Scheduler) updateTimeMetrics() {
+func (s *Scheduler) updateTimeMetrics(stopTickerCh chan bool) {
 	for {
-		time.Sleep(time.Duration(rateLimitTimeMetricsSeconds) * time.Second)
+		select {
+		case <-stopTickerCh:
+			klog.InfoS("Stopped ticker", "scheduler", s.SchedulerID)
+			return
+		case <-s.ticker.C:
+			// Some algorithms change priority of training jobs according to time metrics,
+			// and may trigger rescheduling if that happens.
+			priorityChanged := false
 
-		// some algorithms change priority of training jobs according to time metrics,
-		// and may trigger rescheduling if that happens.
-		priorityChanged := false
-
-		s.SchedulerLock.Lock()
-		for job, status := range s.JobStatuses {
-			elasped := time.Since(s.JobMetrics[job].LastUpdated)
-			if status == types.JobRunning {
-				s.JobMetrics[job].RunningTime += elasped
-				s.JobMetrics[job].GpuTime += elasped * time.Duration(s.JobNumGPU[job])
-				s.JobMetrics[job].TotalTime += elasped
-				s.JobMetrics[job].LastRunningTime += elasped
-				s.JobMetrics[job].LastGpuTime += elasped * time.Duration(s.JobNumGPU[job])
-			} else if status == types.JobWaiting {
-				s.JobMetrics[job].WaitingTime += elasped
-				s.JobMetrics[job].TotalTime += elasped
-				s.JobMetrics[job].LastWaitingTime += elasped
-			}
-			s.JobMetrics[job].LastUpdated = time.Now()
-
-			// Tiresias' rules of priority changes
-			if (s.Algorithm.GetName() == "Tiresias" || s.Algorithm.GetName() == "ElasticTiresias") && (status == types.JobRunning || status == types.JobWaiting) {
-				t, err := s.Queue.Get(job)
-				if err != nil {
-					klog.ErrorS(err, "Could not find training job in queue, this should not happen", "job", job,
-						"scheduler", s.SchedulerID)
-					continue
+			s.SchedulerLock.Lock()
+			for job, status := range s.JobStatuses {
+				elasped := time.Since(s.JobMetrics[job].LastUpdated)
+				if status == types.JobRunning {
+					s.JobMetrics[job].RunningTime += elasped
+					s.JobMetrics[job].GpuTime += elasped * time.Duration(s.JobNumGPU[job])
+					s.JobMetrics[job].TotalTime += elasped
+					s.JobMetrics[job].LastRunningTime += elasped
+					s.JobMetrics[job].LastGpuTime += elasped * time.Duration(s.JobNumGPU[job])
+				} else if status == types.JobWaiting {
+					s.JobMetrics[job].WaitingTime += elasped
+					s.JobMetrics[job].TotalTime += elasped
+					s.JobMetrics[job].LastWaitingTime += elasped
 				}
-				// demote the job if last GPU time crosses threshold
-				if s.JobMetrics[job].LastGpuTime.Seconds() > algorithm.TiresiasThresholdsSec[t.Priority] {
-					t.Priority = algorithm.TiresiasDemotePriority(t.Priority)
-					priorityChanged = true
-					klog.V(4).InfoS("Demoted priority to training job", "job", job, "priority", t.Priority,
-						"scheduler", s.SchedulerID)
+				s.JobMetrics[job].LastUpdated = time.Now()
 
-					// promote the job if last waiting time longer than STARVELIMIT
-				} else if s.JobMetrics[job].LastWaitingTime.Seconds() >= s.JobMetrics[job].LastRunningTime.Seconds()*float64(algorithm.TiresiasPromoteKnob) && t.Priority > 0 {
-					t.Priority = algorithm.TiresiasPromotePriority(t.Priority)
-					priorityChanged = true
-					klog.V(4).InfoS("Promoted priority to training job", "job", job, "priority", t.Priority,
-						"scheduler", s.SchedulerID)
+				// Tiresias' rules of priority changes
+				if (s.Algorithm.GetName() == "Tiresias" || s.Algorithm.GetName() == "ElasticTiresias") &&
+					(status == types.JobRunning || status == types.JobWaiting) {
+					t, err := s.Queue.Get(job)
+					if err != nil {
+						klog.ErrorS(err, "Could not find training job in queue, this should not happen", "job", job,
+							"scheduler", s.SchedulerID)
+						continue
+					}
+					// demote the job if last GPU time crosses threshold
+					if s.JobMetrics[job].LastGpuTime.Seconds() > algorithm.TiresiasThresholdsSec[t.Priority] {
+						t.Priority = algorithm.TiresiasDemotePriority(t.Priority)
+						priorityChanged = true
+						klog.V(4).InfoS("Demoted priority to training job", "job", job, "priority", t.Priority,
+							"scheduler", s.SchedulerID)
+
+						// promote the job if last waiting time longer than STARVELIMIT
+					} else if s.JobMetrics[job].LastWaitingTime.Seconds() >= s.JobMetrics[job].LastRunningTime.Seconds()*float64(algorithm.TiresiasPromoteKnob) &&
+						t.Priority > 0 {
+						t.Priority = algorithm.TiresiasPromotePriority(t.Priority)
+						priorityChanged = true
+						klog.V(4).InfoS("Promoted priority to training job", "job", job, "priority", t.Priority,
+							"scheduler", s.SchedulerID)
+					}
 				}
 			}
-		}
-		s.SchedulerLock.Unlock()
+			s.SchedulerLock.Unlock()
 
-		// trigger rescheduling if priority changed
-		if priorityChanged {
-			klog.V(3).InfoS("Triggered rescheduling because of priority changed", "scheduler", s.SchedulerID)
-			s.ReschedCh <- time.Now()
+			// trigger rescheduling if priority changed
+			if priorityChanged {
+				klog.V(3).InfoS("Triggered rescheduling because of priority changed", "scheduler", s.SchedulerID)
+				s.ReschedCh <- time.Now()
+			}
 		}
 	}
 }
