@@ -3,7 +3,9 @@ package placement
 import (
 	"context"
 	"errors"
+	"flag"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -14,9 +16,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	kubeClient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
@@ -28,11 +33,39 @@ var launcherToleration = corev1.Toleration{
 	Effect:   corev1.TaintEffectNoExecute,
 }
 
-// nodes for testing
-// TODO
-var defaultNodes = map[nodeName]*nodeState{
-	"gpu3": NewNodeState("gpu3", 4),
-	"gpu4": NewNodeState("gpu4", 4),
+func DiscoverNodes() map[nodeName]*nodeState {
+	defaultNodes := make(map[nodeName]*nodeState)
+	var kubeconfig *string
+
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	// use the current context in kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// create the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for _, node := range nodes.Items {
+		gpus := node.Status.Capacity["nvidia.com/gpu"]
+		defaultNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
+	}
+	return defaultNodes
 }
 
 type PlacementManager struct {
@@ -67,9 +100,11 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
+	defaultNodes := DiscoverNodes()
+
 	pm := &PlacementManager{
 		SchedulerID:   id,
-		nodeStates:    defaultNodes, // TODO: Initiate nodes
+		nodeStates:    defaultNodes,
 		jobStates:     map[string]*jobState{},
 		podNodeName:   map[podName]nodeName{},
 		placementLock: sync.RWMutex{},
