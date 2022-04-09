@@ -12,7 +12,6 @@ import (
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
 	"github.com/heyfey/vodascheduler/pkg/placement"
-	kubeflowcommon "github.com/kubeflow/common/pkg/apis/common/v1"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
 	mpijobclientset "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned"
 	client "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned/typed/kubeflow/v1"
@@ -443,27 +442,21 @@ func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
 		return
 	}
 	klog.V(5).InfoS("MPIJob updated", "mpijob", klog.KObj(mpiJob), "scheduler", s.SchedulerID)
-	// get current phase from the last element of Conditions
-	// TODO: determine phase using existing api
-	// https://github.com/kubeflow/mpi-operator/blob/6ee71d45dde0e71229b7fa91065e0c6bb503cd92/pkg/controllers/v1/mpi_job_controller_status.go#L86
-	last := len(mpiJob.Status.Conditions) - 1
-	if last < 0 {
-		return
-	}
-	phase := mpiJob.Status.Conditions[last].Type
-	name := mpiJob.GetName()
-	if phase == kubeflowcommon.JobSucceeded {
+
+	if isFinished(mpiJob.Status) {
 		s.SchedulerLock.Lock()
-		if s.JobStatuses[name] != types.JobCompleted { // is the first succeeded event
-			s.handleJobCompleted(name)
+		defer s.SchedulerLock.Unlock()
+
+		job := mpiJob.GetName()
+		if isSucceeded(mpiJob.Status) {
+			if s.JobStatuses[job] != types.JobCompleted { // is the first succeeded event
+				s.handleJobCompleted(job)
+			}
+		} else if isFailed(mpiJob.Status) {
+			if s.JobStatuses[job] != types.JobFailed { // is the first failed event
+				s.handleJobFailed(job)
+			}
 		}
-		s.SchedulerLock.Unlock()
-	} else if phase == kubeflowcommon.JobFailed {
-		s.SchedulerLock.Lock()
-		if s.JobStatuses[name] != types.JobFailed { // is the first failed event
-			s.handleJobFailed(name)
-		}
-		s.SchedulerLock.Unlock()
 	}
 }
 
