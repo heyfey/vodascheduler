@@ -51,23 +51,23 @@ type PlacementManager struct {
 }
 
 func discoverNodes(config *rest.Config) (map[nodeName]*nodeState, error) {
-	defaultNodes := make(map[nodeName]*nodeState)
+	availableNodes := make(map[nodeName]*nodeState)
 
 	clientset, err := kubeClient.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	clusterNodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	for _, node := range nodes.Items {
+	for _, node := range clusterNodes.Items {
 		gpus := node.Status.Capacity["nvidia.com/gpu"]
-		defaultNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
+		availableNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
 	}
-	return defaultNodes, err
+	return availableNodes, err
 }
 
 // NewPlacementManager creates a new placement manager.
@@ -80,14 +80,14 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
-	defaultNodes, err := discoverNodes(kConfig)
+	nodes, err := discoverNodes(kConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	pm := &PlacementManager{
 		SchedulerID:   id,
-		nodeStates:    defaultNodes,
+		nodeStates:    nodes,
 		jobStates:     map[string]*jobState{},
 		podNodeName:   map[podName]nodeName{},
 		placementLock: sync.RWMutex{},
