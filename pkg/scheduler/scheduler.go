@@ -20,6 +20,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeClient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
@@ -27,13 +28,9 @@ import (
 )
 
 const (
-	databaseNameRunningJobs = "runnings"
-	reschedChannelSize      = 100
-	restartChannelSize      = 100
-	// Number of GPUs of this scheduler
-	// TODO: should be user specified or discover in runtime
-	gpus = 8
-
+	databaseNameRunningJobs     = "runnings"
+	reschedChannelSize          = 100
+	restartChannelSize          = 100
 	rateLimitTimeMetricsSeconds = 5
 	reschedRateLimitSeconds     = 30
 )
@@ -76,6 +73,25 @@ type Scheduler struct {
 	ticker           time.Ticker
 }
 
+func discoverGPUs(config *rest.Config) (int, error) {
+	clientset, err := kubeClient.NewForConfig(config)
+	if err != nil {
+		return 0, err
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return 0, err
+	}
+
+	totalGPUs := 0
+	for _, node := range nodes.Items {
+		gpus := node.Status.Capacity["nvidia.com/gpu"]
+		totalGPUs += int(gpus.Value())
+	}
+	return totalGPUs, err
+}
+
 // NewScheduler creates a new scheduler
 func NewScheduler(id string, config *rest.Config, session *mgo.Session, database string) (*Scheduler, error) {
 	q, err := newTrainingJobQueue()
@@ -88,7 +104,10 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		return nil, err
 	}
 
-	// TODO: find GPUAvailable
+	gpus, err := discoverGPUs(config)
+	if err != nil {
+		return nil, err
+	}
 
 	pm, err := placement.NewPlacementManager(id, config)
 	if err != nil {
@@ -104,7 +123,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 
 	s := &Scheduler{
 		SchedulerID:    id,
-		GPUAvailable:   gpus, // TODO
+		GPUAvailable:   gpus,
 		mpiClient:      c,
 		mpiJobInformer: mpiJobInformer,
 
@@ -115,7 +134,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		JobMetrics:    map[string]*trainingjob.JobMetrics{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: algorithm.NewElasticFIFO(gpus, id), // TODO
+		Algorithm: algorithm.NewElasticFIFO(gpus, id),
 
 		ReschedCh:           make(chan time.Time, reschedChannelSize),
 		StopSchedulerCh:     make(chan time.Time),
@@ -143,6 +162,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 
 func (s *Scheduler) Run() {
 	klog.InfoS("Starting scheduler", "scheduler", s.SchedulerID)
+	klog.InfoS("Discovered total number of GPUs", "scheduler", s.SchedulerID, "gpus", s.GPUAvailable)
 	defer klog.InfoS("Stopping scheduler", "scheduler", s.SchedulerID)
 
 	// defer close channels ..?

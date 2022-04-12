@@ -28,13 +28,6 @@ var launcherToleration = corev1.Toleration{
 	Effect:   corev1.TaintEffectNoExecute,
 }
 
-// nodes for testing
-// TODO
-var defaultNodes = map[nodeName]*nodeState{
-	"gpu3": NewNodeState("gpu3", 4),
-	"gpu4": NewNodeState("gpu4", 4),
-}
-
 type PlacementManager struct {
 	SchedulerID string
 	kClient     kubeClient.Interface
@@ -57,6 +50,26 @@ type PlacementManager struct {
 	metrics PlacementManagerMetrics
 }
 
+func discoverNodes(config *rest.Config) (map[nodeName]*nodeState, error) {
+	availableNodes := make(map[nodeName]*nodeState)
+
+	clientset, err := kubeClient.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	clusterNodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range clusterNodes.Items {
+		gpus := node.Status.Capacity["nvidia.com/gpu"]
+		availableNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
+	}
+	return availableNodes, err
+}
+
 // NewPlacementManager creates a new placement manager.
 func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, error) {
 	kClient, err := kubeClient.NewForConfig(kConfig)
@@ -67,9 +80,14 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
+	nodes, err := discoverNodes(kConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	pm := &PlacementManager{
 		SchedulerID:   id,
-		nodeStates:    defaultNodes, // TODO: Initiate nodes
+		nodeStates:    nodes,
 		jobStates:     map[string]*jobState{},
 		podNodeName:   map[podName]nodeName{},
 		placementLock: sync.RWMutex{},
@@ -94,6 +112,9 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 
 func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 	klog.InfoS("Starting placement manager", "scheduler", pm.SchedulerID)
+	for _, n := range pm.nodeStates {
+		klog.InfoS("Discovered nodes and their GPUs", "scheduler", pm.SchedulerID, "nodes", n.name, "num_gpus", n.totalSlots)
+	}
 	defer klog.InfoS("Stopping placement manager", "scheduler", pm.SchedulerID)
 	// TODO(heyfey): defer handle crash
 
@@ -101,7 +122,7 @@ func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 	if !cache.WaitForCacheSync(
 		stopCh,
 		pm.podInformer.HasSynced) {
-		err := errors.New("Failed to WaitForCacheSync")
+		err := errors.New("failed to WaitForCacheSync")
 		klog.ErrorS(err, "Placement manager failed to WaitForCacheSync", "scheduler", pm.SchedulerID)
 		klog.Flush()
 		os.Exit(1)
@@ -132,7 +153,7 @@ func (pm *PlacementManager) addPod(obj interface{}) {
 			}
 		} else {
 			klog.Flush()
-			panic(errors.New("Could not find pod in podNodeName table"))
+			panic(errors.New("could not find pod in podNodeName table"))
 		}
 		pm.placementLock.RUnlock()
 	}
@@ -354,7 +375,7 @@ func (pm *PlacementManager) bindNodes(nodeList []*nodeState) {
 
 // scoreCandidates scores all the candidate nodes for a node.
 func (pm *PlacementManager) scoreCandidates(position *nodeState, candidateList []*nodeState) []int64 {
-	scores := make([]int64, len(candidateList), len(candidateList))
+	scores := make([]int64, len(candidateList))
 	for i, candidate := range candidateList {
 		scores[i] = pm.score(position, candidate)
 	}
