@@ -3,9 +3,7 @@ package placement
 import (
 	"context"
 	"errors"
-	"flag"
 	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 
@@ -16,12 +14,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	kubeClient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
@@ -31,41 +26,6 @@ var launcherToleration = corev1.Toleration{
 	Key:      config.TaintKey,
 	Operator: corev1.TolerationOpExists,
 	Effect:   corev1.TaintEffectNoExecute,
-}
-
-func DiscoverNodes() map[nodeName]*nodeState {
-	defaultNodes := make(map[nodeName]*nodeState)
-	var kubeconfig *string
-
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-
-	// use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		panic(err.Error())
-	}
-
-	for _, node := range nodes.Items {
-		gpus := node.Status.Capacity["nvidia.com/gpu"]
-		defaultNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
-	}
-	return defaultNodes
 }
 
 type PlacementManager struct {
@@ -90,6 +50,26 @@ type PlacementManager struct {
 	metrics PlacementManagerMetrics
 }
 
+func discoverNodes(config *rest.Config) (map[nodeName]*nodeState, error) {
+	defaultNodes := make(map[nodeName]*nodeState)
+
+	clientset, err := kubeClient.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes.Items {
+		gpus := node.Status.Capacity["nvidia.com/gpu"]
+		defaultNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
+	}
+	return defaultNodes, err
+}
+
 // NewPlacementManager creates a new placement manager.
 func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, error) {
 	kClient, err := kubeClient.NewForConfig(kConfig)
@@ -100,7 +80,10 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
-	defaultNodes := DiscoverNodes()
+	defaultNodes, err := discoverNodes(kConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	pm := &PlacementManager{
 		SchedulerID:   id,
@@ -136,7 +119,7 @@ func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 	if !cache.WaitForCacheSync(
 		stopCh,
 		pm.podInformer.HasSynced) {
-		err := errors.New("Failed to WaitForCacheSync")
+		err := errors.New("failed to WaitForCacheSync")
 		klog.ErrorS(err, "Placement manager failed to WaitForCacheSync", "scheduler", pm.SchedulerID)
 		klog.Flush()
 		os.Exit(1)
@@ -167,7 +150,7 @@ func (pm *PlacementManager) addPod(obj interface{}) {
 			}
 		} else {
 			klog.Flush()
-			panic(errors.New("Could not find pod in podNodeName table"))
+			panic(errors.New("could not find pod in podNodeName table"))
 		}
 		pm.placementLock.RUnlock()
 	}
@@ -389,7 +372,7 @@ func (pm *PlacementManager) bindNodes(nodeList []*nodeState) {
 
 // scoreCandidates scores all the candidate nodes for a node.
 func (pm *PlacementManager) scoreCandidates(position *nodeState, candidateList []*nodeState) []int64 {
-	scores := make([]int64, len(candidateList), len(candidateList))
+	scores := make([]int64, len(candidateList))
 	for i, candidate := range candidateList {
 		scores[i] = pm.score(position, candidate)
 	}
