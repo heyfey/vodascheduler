@@ -7,8 +7,11 @@ rules:
   resources: ["mpijobs"]
   verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
 - apiGroups: [""]
-  resources: ["pods", "nodes"]
+  resources: ["pods"]
   verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: v1
 kind: ServiceAccount
