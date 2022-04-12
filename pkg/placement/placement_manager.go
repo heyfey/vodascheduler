@@ -113,7 +113,7 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 	klog.InfoS("Starting placement manager", "scheduler", pm.SchedulerID)
 	for _, n := range pm.nodeStates {
-		klog.InfoS("Nodes found", "scheduler", pm.SchedulerID, "nodes", n.name, "num_gpus", n.totalSlots)
+		klog.InfoS("Discovered nodes and their GPUs", "scheduler", pm.SchedulerID, "nodes", n.name, "num_gpus", n.totalSlots)
 	}
 	defer klog.InfoS("Stopping placement manager", "scheduler", pm.SchedulerID)
 	// TODO(heyfey): defer handle crash
