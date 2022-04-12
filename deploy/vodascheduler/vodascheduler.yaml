@@ -3,30 +3,12 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: voda-scheduler
 rules:
-- apiGroups:
-  - kubeflow.org
-  resources:
-  - mpijobs
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-  - delete
-  - update
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-  - delete
-  - update
-  - patch
+- apiGroups: ["kubeflow.org"]
+  resources: ["mpijobs"]
+  verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods", "nodes"]
+  verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
 ---
 apiVersion: v1
 kind: ServiceAccount
