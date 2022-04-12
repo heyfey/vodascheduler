@@ -162,6 +162,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 
 func (s *Scheduler) Run() {
 	klog.InfoS("Starting scheduler", "scheduler", s.SchedulerID)
+	klog.InfoS("GPUs found", "scheduler", s.SchedulerID, "gpus", s.GPUAvailable)
 	defer klog.InfoS("Stopping scheduler", "scheduler", s.SchedulerID)
 
 	// defer close channels ..?
