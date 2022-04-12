@@ -3,9 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"flag"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -22,11 +20,9 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	kubeClient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
@@ -38,41 +34,6 @@ const (
 	rateLimitTimeMetricsSeconds = 5
 	reschedRateLimitSeconds     = 30
 )
-
-func DiscoverGPUs() int {
-	var kubeconfig *string
-
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-
-	// use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		panic(err.Error())
-	}
-
-	totalGPUs := 0
-	for _, node := range nodes.Items {
-		gpus := node.Status.Capacity["nvidia.com/gpu"]
-		totalGPUs += int(gpus.Value())
-	}
-	return totalGPUs
-}
 
 type Scheduler struct {
 	SchedulerID    string
@@ -112,6 +73,25 @@ type Scheduler struct {
 	ticker           time.Ticker
 }
 
+func discoverGPUs(config *rest.Config) (int, error) {
+	clientset, err := kubeClient.NewForConfig(config)
+	if err != nil {
+		return 0, err
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return 0, err
+	}
+
+	totalGPUs := 0
+	for _, node := range nodes.Items {
+		gpus := node.Status.Capacity["nvidia.com/gpu"]
+		totalGPUs += int(gpus.Value())
+	}
+	return totalGPUs, err
+}
+
 // NewScheduler creates a new scheduler
 func NewScheduler(id string, config *rest.Config, session *mgo.Session, database string) (*Scheduler, error) {
 	q, err := newTrainingJobQueue()
@@ -124,7 +104,10 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		return nil, err
 	}
 
-	gpus := DiscoverGPUs()
+	gpus, err := discoverGPUs(config)
+	if err != nil {
+		return nil, err
+	}
 
 	pm, err := placement.NewPlacementManager(id, config)
 	if err != nil {
@@ -151,7 +134,7 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 		JobMetrics:    map[string]*trainingjob.JobMetrics{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: algorithm.NewElasticFIFO(gpus, id), // TODO
+		Algorithm: algorithm.NewElasticFIFO(gpus, id),
 
 		ReschedCh:           make(chan time.Time, reschedChannelSize),
 		StopSchedulerCh:     make(chan time.Time),
