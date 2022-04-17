@@ -43,12 +43,12 @@ type JobMaster struct {
 func NewJobMaster(kubeconfig string) *JobMaster {
 	schedulers := make(map[string]*scheduler.Scheduler)
 
-	var config *rest.Config
+	var kConfig *rest.Config
 	var err error
 	if kubeconfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		kConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	} else {
-		config, err = rest.InClusterConfig()
+		kConfig, err = rest.InClusterConfig()
 	}
 
 	if err != nil {
@@ -68,7 +68,7 @@ func NewJobMaster(kubeconfig string) *JobMaster {
 	// gpuTypes := ["nvidia-gtx-1080ti", ... ]
 	// for _, gpuType := range gpuTypes { ...create scheduler
 	gpuType := "default"
-	sched, err := scheduler.NewScheduler(gpuType, config, session.Copy(), databaseNameJobInfo)
+	sched, err := scheduler.NewScheduler(gpuType, kConfig, session.Copy(), databaseNameJobInfo)
 	if err != nil {
 		klog.ErrorS(err, "Failed to create scheduler", "scheduler", gpuType, "gpu", gpuType)
 		klog.Flush()

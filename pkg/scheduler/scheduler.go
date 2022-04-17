@@ -94,32 +94,33 @@ func discoverGPUs(config *rest.Config) (int, error) {
 }
 
 // NewScheduler creates a new scheduler
-func NewScheduler(id string, config *rest.Config, session *mgo.Session, database string) (*Scheduler, error) {
+func NewScheduler(id string, kConfig *rest.Config, session *mgo.Session, database string) (*Scheduler, error) {
 	q, err := newTrainingJobQueue()
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := client.NewForConfig(config)
+	c, err := client.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	gpus, err := discoverGPUs(config)
+	gpus, err := discoverGPUs(kConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	pm, err := placement.NewPlacementManager(id, config)
+	pm, err := placement.NewPlacementManager(id, kConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	mpiJobClientSet, err := mpijobclientset.NewForConfig(config)
+	mpiJobClientSet, err := mpijobclientset.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
 	}
-	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactory(mpiJobClientSet, 0)
+	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactoryWithOptions(mpiJobClientSet, 0,
+		kubeflowinformers.WithNamespace(config.Namespace))
 	mpiJobInformer := kubeflowInformerFactory.Kubeflow().V1().MPIJobs().Informer()
 
 	s := &Scheduler{
@@ -151,7 +152,6 @@ func NewScheduler(id string, config *rest.Config, session *mgo.Session, database
 	s.Metrics = s.initSchedulerMetrics()
 
 	// setup informer callbacks
-	// TODO(heyfey): set namespace and replace with FilteringResourceEventHandler
 	s.mpiJobInformer.AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			UpdateFunc: s.updateMPIJob,

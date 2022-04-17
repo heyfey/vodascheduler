@@ -76,7 +76,8 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	if err != nil {
 		return nil, err
 	}
-	sharedInformers := informers.NewSharedInformerFactory(kClient, 0)
+	sharedInformers := informers.NewSharedInformerFactoryWithOptions(kClient, 0,
+		informers.WithNamespace(config.Namespace))
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
