@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/heyfey/vodascheduler/config"
 	"github.com/heyfey/vodascheduler/pkg/algorithm"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
@@ -371,7 +372,7 @@ func (s *Scheduler) startTrainingJob(job string) error {
 	mpiJob := s.JobMPIJobs[job]
 	s.setMPIJobWorkerReplicas(mpiJob)
 
-	_, err := s.mpiClient.MPIJobs("default").Create(context.TODO(), mpiJob, metav1.CreateOptions{})
+	_, err := s.mpiClient.MPIJobs(config.Namespace).Create(context.TODO(), mpiJob, metav1.CreateOptions{})
 	if err != nil {
 		// TODO(heyfey): SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
 		klog.ErrorS(err, "Failed to start training job, this should not happen", "job", klog.KObj(mpiJob),
@@ -406,23 +407,22 @@ func (s *Scheduler) scaleTrainingJobMany(jobs ...string) {
 func (s *Scheduler) scaleTrainingJob(job string) error {
 	// TODO: may want to check job status == types.JobRunning
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mpiJob, err := s.mpiClient.MPIJobs("default").Get(context.TODO(), job, metav1.GetOptions{}) //TODO: namespace
+		mpiJob, err := s.mpiClient.MPIJobs(config.Namespace).Get(context.TODO(), job, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
 		s.setMPIJobWorkerReplicas(mpiJob)
 
-		_, err = s.mpiClient.MPIJobs("default").Update(context.TODO(), mpiJob, metav1.UpdateOptions{})
+		_, err = s.mpiClient.MPIJobs(config.Namespace).Update(context.TODO(), mpiJob, metav1.UpdateOptions{})
 		return err
 	})
 
-	// TODO:(heyfey): namespace
 	if err != nil {
-		klog.ErrorS(err, "Failed to scale training job, this should not happen", "job", klog.KRef("default", job),
-			"scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+		klog.ErrorS(err, "Failed to scale training job, this should not happen",
+			"job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
 	} else {
-		klog.V(5).InfoS("Scaled training job", "job", klog.KRef("default", job), "scheduler", s.SchedulerID)
+		klog.V(5).InfoS("Scaled training job", "job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID)
 	}
 	return err
 }
@@ -443,14 +443,13 @@ func (s *Scheduler) haltTrainingJobMany(jobs ...string) {
 // haltTrainingJob deletes MPIJob of a training job.
 // Should acquire lock before calling it.
 func (s *Scheduler) haltTrainingJob(job string) error {
-	//TODO(heyfey): namespace
-	err := s.mpiClient.MPIJobs("default").Delete(context.TODO(), job, metav1.DeleteOptions{})
+	err := s.mpiClient.MPIJobs(config.Namespace).Delete(context.TODO(), job, metav1.DeleteOptions{})
 	if err != nil {
-		klog.ErrorS(err, "Failed to stop training job, this should not happen", "job", klog.KRef("default", job),
-			"scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+		klog.ErrorS(err, "Failed to stop training job, this should not happen",
+			"job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
 		// TODO: error handling if not delete
 	} else {
-		klog.V(5).InfoS("Stopped training job", "job", klog.KRef("default", job), "scheduler", s.SchedulerID)
+		klog.V(5).InfoS("Stopped training job", "job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID)
 
 		s.JobStatuses[job] = types.JobWaiting
 	}
@@ -488,11 +487,11 @@ func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
 // It should only be called by updateMPIJob, and should acquire lock before
 // calling it
 func (s *Scheduler) handleJobCompleted(job string) {
-	klog.InfoS("Training job completed", "job", klog.KRef("default", job), "scheduler", s.SchedulerID,
+	klog.InfoS("Training job completed", "job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID,
 		"waitedTotalSeconds", s.JobMetrics[job].WaitingTime.Seconds(),
 		"ranTotalSeconds", s.JobMetrics[job].RunningTime.Seconds(),
 		"gpuTotalSeconds", s.JobMetrics[job].GpuTime.Seconds(),
-		"elaspedTotalSeconds", s.JobMetrics[job].TotalTime.Seconds()) // TODO(heyfey): namespace
+		"elaspedTotalSeconds", s.JobMetrics[job].TotalTime.Seconds())
 
 	s.JobStatuses[job] = types.JobCompleted
 	s.Queue.Delete(job)

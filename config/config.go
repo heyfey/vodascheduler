@@ -8,4 +8,5 @@ const (
 	IP         = "10.100.86.93"
 	EntryPoint = "/training"
 	TaintKey   = "vodascheduler/hostname"
+	Namespace  = "voda-scheduler"
 )

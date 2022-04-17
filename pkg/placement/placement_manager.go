@@ -186,9 +186,9 @@ func (pm *PlacementManager) addPodToleration(pod *corev1.Pod, toleration corev1.
 		"scheduler", pm.SchedulerID)
 
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() (err error) {
-		pod, err := pm.kClient.CoreV1().Pods("default").Get(context.TODO(), pod.GetName(), metav1.GetOptions{}) // TODO: set namespace
+		pod, err := pm.kClient.CoreV1().Pods(config.Namespace).Get(context.TODO(), pod.GetName(), metav1.GetOptions{})
 		pod.Spec.Tolerations = append(pod.Spec.Tolerations, toleration)
-		_, err = pm.kClient.CoreV1().Pods("default").Update(context.TODO(), pod, metav1.UpdateOptions{}) // TODO: set namespace
+		_, err = pm.kClient.CoreV1().Pods(config.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
 		return err
 	})
 	if err != nil {
@@ -435,8 +435,8 @@ func (pm *PlacementManager) updatePodNodeName() []podName {
 			for i := 0; i < hs.slots; i++ {
 				pod := getWorkerPodName(job.name, idx)
 
-				klog.V(5).InfoS("Updating podNodeName table", "pod", klog.KRef("default", string(pod)),
-					"nodeName", hs.node, "scheduler", pm.SchedulerID) // TODO(heyfey): namespace
+				klog.V(5).InfoS("Updating podNodeName table", "pod", klog.KRef(config.Namespace, string(pod)),
+					"nodeName", hs.node, "scheduler", pm.SchedulerID)
 
 				// determine if the pod need to be deleted
 				oldNode, ok := pm.podNodeName[pod]
@@ -445,8 +445,8 @@ func (pm *PlacementManager) updatePodNodeName() []podName {
 					deleted++
 					deletedWorkers++
 
-					klog.V(5).InfoS("Found worker pod need migration", klog.KRef("default", string(pod)),
-						"fromNode", oldNode, "toNode", hs.node, "scheduler", pm.SchedulerID) // TODO(heyfey): namespace
+					klog.V(5).InfoS("Found worker pod need migration", klog.KRef(config.Namespace, string(pod)),
+						"fromNode", oldNode, "toNode", hs.node, "scheduler", pm.SchedulerID)
 				}
 				newPodNodeName[pod] = hs.node
 				idx++
@@ -470,13 +470,13 @@ func (pm *PlacementManager) updatePodNodeName() []podName {
 // will be added to pods by the informer callbacks of the placement manager.
 func (pm *PlacementManager) deletePods(podList []podName) {
 	for _, pod := range podList {
-		err := pm.kClient.CoreV1().Pods("default").Delete(context.TODO(), string(pod), metav1.DeleteOptions{}) // TODO: set namespace
+		err := pm.kClient.CoreV1().Pods(config.Namespace).Delete(context.TODO(), string(pod), metav1.DeleteOptions{})
 		if err != nil {
-			klog.ErrorS(err, "Failed to delete pod for migration", klog.KRef("default", string(pod)),
-				"scheduler", pm.SchedulerID) // TODO: error handling
+			klog.ErrorS(err, "Failed to delete pod for migration", klog.KRef(config.Namespace, string(pod)),
+				"scheduler", pm.SchedulerID)
 		} else {
-			klog.V(4).InfoS("Deleted pod that need migration", "pod", klog.KRef("default", string(pod)),
-				"scheduler", pm.SchedulerID) // TODO(heyfey): namespace
+			klog.V(4).InfoS("Deleted pod that need migration", "pod", klog.KRef(config.Namespace, string(pod)),
+				"scheduler", pm.SchedulerID)
 		}
 	}
 }
