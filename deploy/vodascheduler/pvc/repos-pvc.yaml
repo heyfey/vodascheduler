@@ -1,7 +1,8 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: voda-pv-data-keras
+  name: voda-pv-repos
+  namespace: voda-scheduler
 spec:
   capacity:
     storage: 5Gi
@@ -9,12 +10,13 @@ spec:
     - ReadWriteMany
   nfs:
     server: 192.168.20.100
-    path: "/volume1/homes/heyfey/.keras"
+    path: "/volume1/homes/heyfey/voda/vodascheduler"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: voda-pvc-data-keras
+  name: voda-pvc-repos
+  namespace: voda-scheduler
 spec:
   accessModes:
     - ReadWriteMany

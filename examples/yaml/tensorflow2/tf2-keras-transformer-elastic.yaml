@@ -2,6 +2,7 @@ apiVersion: kubeflow.org/v1
 kind: MPIJob
 metadata:
   name: tf2-keras-transformer-elastic
+  namespace: voda-scheduler
 spec:
   slotsPerWorker: 1
   cleanPodPolicy: Running

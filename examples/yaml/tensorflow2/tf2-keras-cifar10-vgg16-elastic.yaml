@@ -2,6 +2,7 @@ apiVersion: kubeflow.org/v1
 kind: MPIJob
 metadata:
   name: tf2-keras-cifar10-vgg16-elastic
+  namespace: voda-scheduler
 spec:
   slotsPerWorker: 1
   cleanPodPolicy: Running

@@ -2,6 +2,7 @@ apiVersion: kubeflow.org/v1
 kind: MPIJob
 metadata:
   name: pytorch-mnist-elastic
+  namespace: voda-scheduler
 spec:
   slotsPerWorker: 1
   cleanPodPolicy: Running
