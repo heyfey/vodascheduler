@@ -29,9 +29,10 @@ var launcherToleration = corev1.Toleration{
 }
 
 type PlacementManager struct {
-	SchedulerID string
-	kClient     kubeClient.Interface
-	podInformer cache.SharedIndexInformer
+	SchedulerID  string
+	kClient      kubeClient.Interface
+	podInformer  cache.SharedIndexInformer
+	nodeInformer cache.SharedIndexInformer
 
 	// States of the placement manager, will be updated every time the placements
 	// are adjust, should be protected by placementLock.
@@ -50,22 +51,16 @@ type PlacementManager struct {
 	metrics PlacementManagerMetrics
 }
 
-func discoverNodes(config *rest.Config) (map[nodeName]*nodeState, error) {
+func discoverNodes(kClient *kubeClient.Clientset) (map[nodeName]*nodeState, error) {
 	availableNodes := make(map[nodeName]*nodeState)
-
-	clientset, err := kubeClient.NewForConfig(config)
+	nodes, err := kClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	clusterNodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, node := range clusterNodes.Items {
-		gpus := node.Status.Capacity["nvidia.com/gpu"]
-		availableNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), int(gpus.Value()))
+	for _, node := range nodes.Items {
+		numGpus := countGPUs(node)
+		availableNodes[nodeName(node.Name)] = NewNodeState(nodeName(node.Name), numGpus)
 	}
 	return availableNodes, err
 }
@@ -81,7 +76,9 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
-	nodes, err := discoverNodes(kConfig)
+	nodeInformer := informers.NewSharedInformerFactory(kClient, 0).Core().V1().Nodes().Informer()
+
+	nodes, err := discoverNodes(kClient)
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +91,7 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 		placementLock: sync.RWMutex{},
 		kClient:       kClient,
 		podInformer:   podInformer,
+		nodeInformer:  nodeInformer,
 		StopCh:        make(chan struct{}),
 	}
 	pm.metrics = pm.initPlacementManagerMetrics()
@@ -106,6 +104,14 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 		},
 	)
 
+	pm.nodeInformer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    pm.addNode,
+			UpdateFunc: pm.updateNode,
+			DeleteFunc: pm.deleteNode,
+		},
+	)
+
 	go pm.Run(pm.StopCh)
 
 	return pm, nil
@@ -113,10 +119,12 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 
 func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 	klog.InfoS("Starting placement manager", "scheduler", pm.SchedulerID)
-	for _, n := range pm.nodeStates {
-		klog.InfoS("Discovered nodes and their GPUs", "scheduler", pm.SchedulerID, "nodes", n.name, "num_gpus", n.totalSlots)
-	}
 	defer klog.InfoS("Stopping placement manager", "scheduler", pm.SchedulerID)
+
+	for _, n := range pm.nodeStates {
+		klog.InfoS("Discovered node and its GPUs", "scheduler", pm.SchedulerID,
+			"node", klog.KRef("", string(n.name)), "numGpus", n.totalSlots)
+	}
 	// TODO(heyfey): defer handle crash
 
 	go pm.podInformer.Run(stopCh)
@@ -136,7 +144,7 @@ func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 func (pm *PlacementManager) addPod(obj interface{}) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod", "pod", klog.KObj(pod),
+		klog.ErrorS(errors.New("unexpected pod type"), "Failed to add pod", "pod", klog.KObj(pod),
 			"scheduler", pm.SchedulerID)
 		return
 	}
@@ -197,6 +205,67 @@ func (pm *PlacementManager) addPodToleration(pod *corev1.Pod, toleration corev1.
 	}
 }
 
+func (pm *PlacementManager) addNode(obj interface{}) {
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to add Node", "node", klog.KObj(node),
+			"scheduler", pm.SchedulerID)
+		return
+	}
+
+	pm.placementLock.Lock()
+	defer pm.placementLock.Unlock()
+
+	numGpus := countGPUs(*node)
+	pm.nodeStates[nodeName(node.GetName())] = NewNodeState(nodeName(node.GetName()), numGpus)
+
+	klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", numGpus, "scheduler", pm.SchedulerID)
+}
+
+func (pm *PlacementManager) updateNode(oldObj interface{}, newObj interface{}) {
+	oldNode, ok := oldObj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(oldNode),
+			"scheduler", pm.SchedulerID)
+		return
+	}
+	newNode, ok := newObj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(newNode),
+			"scheduler", pm.SchedulerID)
+		return
+	}
+	// Informer may deliver an Update event with UID changed if a delete is
+	// immediately followed by a create, so manually decompose it.
+	if oldNode.UID != newNode.UID {
+		pm.deleteNode(oldObj)
+		pm.addNode(newObj)
+	}
+}
+
+func (pm *PlacementManager) deleteNode(obj interface{}) {
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to delete Node", "node", klog.KObj(node),
+			"scheduler", pm.SchedulerID)
+		return
+	}
+
+	pm.placementLock.Lock()
+	defer pm.placementLock.Unlock()
+
+	for job, workers := range pm.nodeStates[nodeName(node.GetName())].jobWorkers {
+		pm.jobStates[job].workers -= workers
+		for _, nSlots := range pm.jobStates[job].nodeSlotsList {
+			if nSlots.node == nodeName(node.GetName()) {
+				nSlots.slots = 0
+				break
+			}
+		}
+	}
+	delete(pm.nodeStates, nodeName(node.GetName()))
+}
+
 func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
 	klog.InfoS("Started placement adjustment", "scheduler", pm.SchedulerID)
 	defer klog.InfoS("Finished placement adjustment", "scheduler", pm.SchedulerID)
@@ -204,18 +273,20 @@ func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
 	pm.placementLock.Lock()
 	timer := prometheus.NewTimer(pm.metrics.placementAlgoDuration)
 
-	// Starting placement algorithm
+	/***** Placement algorithm begin *****/
 	pm.releaseSlots(jobRequests)
+
 	// construct empty nodes from nodeStates
 	schedulableNodesList := make([]*nodeState, 0, len(pm.nodeStates))
 	for _, n := range pm.nodeStates {
 		schedulableNodesList = append(schedulableNodesList, NewNodeState("TBD", n.totalSlots))
 	}
 	pm.bestFit(jobRequests, schedulableNodesList)
+
 	pm.bindNodes(schedulableNodesList)
 	pm.updateJobStates()
 	deletingPodList := pm.updatePodNodeName()
-	// Placement algorithm ended
+	/***** Placement algorithm end *****/
 
 	timer.ObserveDuration()
 	pm.placementLock.Unlock()
@@ -235,43 +306,60 @@ func (pm *PlacementManager) releaseSlots(jobRequests types.JobScheduleResult) {
 		if !ok {
 			// The training job wasn't scheduled, which has been terminated,
 			// thus release all slots of the job.
-			for _, hs := range job.nodeSlotsList {
-				klog.V(5).InfoS("Released slots", "job", job.name, "node", hs.node, "slots", hs.slots,
+			for _, nSlots := range job.nodeSlotsList {
+				klog.V(5).InfoS("Released slots", "job", job.name, "node", nSlots.node, "slots", nSlots.slots,
 					"scheduler", pm.SchedulerID)
 
-				pm.nodeStates[hs.node].freeSlots += hs.slots
-				delete(pm.nodeStates[hs.node].jobWorkers, job.name)
+				node, ok := pm.nodeStates[nSlots.node]
+				if ok {
+					node.freeSlots += nSlots.slots
+					delete(node.jobWorkers, job.name)
+				} else {
+					// node has been deleted, do nothing
+					// nSlots.slots == 0
+				}
 			}
 			job.nodeSlotsList = job.nodeSlotsList[:0]
 
 		} else if workers < job.workers {
 			// the training job has been scaled down
-			toRelease := job.workers - workers // how many slots need to be released
-			// keep releasing slots from the last allocated node of the job
+			toRelease := job.workers - workers // total number of slots of a job to be released
+
+			// Keep releasing slots from the last allocated node of the job,
+			// this is because MPI Operator always deletes worker pods from max
+			// index to 0 when scaling down a job.
 			for toRelease > 0 {
 				last := len(job.nodeSlotsList) - 1
-				node := pm.nodeStates[job.nodeSlotsList[last].node]
+				lastNodeSlots := job.nodeSlotsList[last]
+				node, ok := pm.nodeStates[lastNodeSlots.node]
 
-				if job.nodeSlotsList[last].slots >= toRelease {
+				if lastNodeSlots.slots >= toRelease {
 					// the release can be done by release some slots in this node
 					klog.V(5).InfoS("Released slots", "job", job.name, "node", node.name, "slots",
 						toRelease, "scheduler", pm.SchedulerID)
 
-					job.nodeSlotsList[last].slots -= toRelease
+					lastNodeSlots.slots -= toRelease
 					node.freeSlots += toRelease
 					node.jobWorkers[job.name] -= toRelease
 					toRelease = 0
 				} else {
-					// it is not enough even if we release all slots of the job
-					// in this node
+					// It is not enough even if we release all slots of the job
+					// in this node. This case includes lastNodeSlots.slots == 0,
+					// which means the node has been deleted.
 					klog.V(5).InfoS("Released slots", "job", job.name, "node", node.name,
-						"slots", job.nodeSlotsList[last].slots, "scheduler", pm.SchedulerID)
+						"slots", lastNodeSlots.slots, "scheduler", pm.SchedulerID)
 
-					toRelease -= job.nodeSlotsList[last].slots
-					job.nodeSlotsList[last].slots = 0
-					node.freeSlots += node.jobWorkers[job.name]
-					node.jobWorkers[job.name] = 0
+					toRelease -= lastNodeSlots.slots
+					lastNodeSlots.slots = 0
+					if ok {
+						node.freeSlots += node.jobWorkers[job.name]
+						node.jobWorkers[job.name] = 0
+					} else {
+						// Node has been deleted.
+						// lastNodeSlots.slots should equal 0 in this case
+					}
 				}
+				job.nodeSlotsList[last] = lastNodeSlots
 
 				// The following two statements should always be true at the same time.
 				// remove the node from the job if the job has 0 slot in the node
@@ -279,7 +367,7 @@ func (pm *PlacementManager) releaseSlots(jobRequests types.JobScheduleResult) {
 					job.nodeSlotsList = job.nodeSlotsList[:last]
 				}
 				// remove the job from the node if the node gives 0 slot to the job
-				if node.jobWorkers[job.name] == 0 {
+				if ok && node.jobWorkers[job.name] == 0 {
 					delete(node.jobWorkers, job.name)
 				}
 			}
@@ -300,6 +388,12 @@ func (pm *PlacementManager) bestFit(jobRequests types.JobScheduleResult, nodeLis
 		return requests[i].workers > requests[j].workers
 	})
 
+	totalClusterSlots := 0
+	for _, node := range nodeList {
+		totalClusterSlots += node.totalSlots
+	}
+
+	// calculate how many jobs require cross-node communication
 	crossNode := 0
 
 	defer klog.V(4).InfoS("Found best-fit", "nodes", nodeList, "requests", requests, "numJobCrossNode", crossNode,
@@ -309,6 +403,22 @@ func (pm *PlacementManager) bestFit(jobRequests types.JobScheduleResult, nodeLis
 	for _, r := range requests {
 		requested := r.workers
 		for requested > 0 {
+			// Cluster info could be inconsistent between scheduler and
+			// placement manager in some cases, for example:
+			//      1. Node informer in scheduler noticed a node addition.
+			//      2. Scheduler register the added node, trigger rescheduling,
+			//         and ask for new placements for new scheduling results.
+			//      3. However, node informer in placement manager hasn't noticed
+			//         the same node addition.
+			// Placement manager decides to tolerates this inconsistency, rather
+			// than pursue strong consistency between scheduler and placement
+			// manager. Even though the inconsistency might cause some resources
+			// under-utilization between two rescheduling periods, it shouldn't
+			// crash the whole system.
+			if totalClusterSlots == 0 { // total requested may not always equal to totalClusterSlots
+				return
+			}
+
 			bestIdx := -1
 			maxIdx := 0
 			for i, node := range nodeList {
@@ -328,12 +438,14 @@ func (pm *PlacementManager) bestFit(jobRequests types.JobScheduleResult, nodeLis
 			if bestIdx == -1 { // best fit not found, use the node with max free slots
 				nodeList[maxIdx].jobWorkers[r.job] = nodeList[maxIdx].freeSlots
 				requested -= nodeList[maxIdx].freeSlots
+				totalClusterSlots -= nodeList[maxIdx].freeSlots
 				nodeList[maxIdx].freeSlots = 0
 				crossNode++
 			} else {
 				nodeList[bestIdx].jobWorkers[r.job] = r.workers
 				requested -= r.workers
 				nodeList[bestIdx].freeSlots -= r.workers
+				totalClusterSlots -= r.workers
 			}
 		}
 	}
@@ -396,8 +508,8 @@ func (pm *PlacementManager) score(position *nodeState, candidate *nodeState) int
 	return int64(score)
 }
 
-// updateJobStates constructs new JobStates according to nodeStates and replaces
-// the original ones.
+// updateJobStates constructs new JobStates from nodeStates and replaces
+// the original one.
 func (pm *PlacementManager) updateJobStates() {
 	newJobStates := make(map[string]*jobState)
 	for _, node := range pm.nodeStates {
@@ -419,9 +531,9 @@ func (pm *PlacementManager) updateJobStates() {
 	pm.jobStates = newJobStates
 }
 
-// updatePodNodeName 1. constructs a new podNodeName according to jobStates and
-// replaces the original one. 2. returns a list of pods whose node was changed
-// thus need migration.
+// updatePodNodeName
+// 1. constructs a new podNodeName from jobStates and replaces the original one.
+// 2. returns a list of pods whose node was changed thus need migration.
 func (pm *PlacementManager) updatePodNodeName() []podName {
 	newPodNodeName := make(map[podName]nodeName)
 
@@ -432,24 +544,24 @@ func (pm *PlacementManager) updatePodNodeName() []podName {
 	for _, job := range pm.jobStates {
 		idx := 0
 		deleted := 0
-		for _, hs := range job.nodeSlotsList {
-			for i := 0; i < hs.slots; i++ {
+		for _, nSlots := range job.nodeSlotsList {
+			for i := 0; i < nSlots.slots; i++ {
 				pod := getWorkerPodName(job.name, idx)
 
 				klog.V(5).InfoS("Updating podNodeName table", "pod", klog.KRef(config.Namespace, string(pod)),
-					"nodeName", hs.node, "scheduler", pm.SchedulerID)
+					"nodeName", nSlots.node, "scheduler", pm.SchedulerID)
 
 				// determine if the pod need to be deleted
 				oldNode, ok := pm.podNodeName[pod]
-				if ok && hs.node != oldNode {
+				if ok && nSlots.node != oldNode {
 					deletingPodList = append(deletingPodList, pod)
 					deleted++
 					deletedWorkers++
 
 					klog.V(5).InfoS("Found worker pod need migration", klog.KRef(config.Namespace, string(pod)),
-						"fromNode", oldNode, "toNode", hs.node, "scheduler", pm.SchedulerID)
+						"fromNode", oldNode, "toNode", nSlots.node, "scheduler", pm.SchedulerID)
 				}
-				newPodNodeName[pod] = hs.node
+				newPodNodeName[pod] = nSlots.node
 				idx++
 			}
 		}
@@ -468,7 +580,7 @@ func (pm *PlacementManager) updatePodNodeName() []podName {
 
 // deletePods deletes pods.
 // The deleted pods will be re-created by the MPIJob controller, and tolerations
-// will be added to pods by the informer callbacks of the placement manager.
+// will be added to pods by the informer callbacks.
 func (pm *PlacementManager) deletePods(podList []podName) {
 	for _, pod := range podList {
 		err := pm.kClient.CoreV1().Pods(config.Namespace).Delete(context.TODO(), string(pod), metav1.DeleteOptions{})

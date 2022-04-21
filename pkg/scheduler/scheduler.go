@@ -20,7 +20,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeinformers "k8s.io/client-go/informers"
 	kubeClient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -41,6 +43,7 @@ type Scheduler struct {
 	GPUAvailable   int
 	mpiClient      *client.KubeflowV1Client
 	mpiJobInformer cache.SharedIndexInformer
+	nodeInformer   cache.SharedIndexInformer
 
 	Queue *TrainingJobQueue
 	// MPIJob representations of each training job
@@ -74,23 +77,22 @@ type Scheduler struct {
 	ticker           time.Ticker
 }
 
-func discoverGPUs(config *rest.Config) (int, error) {
-	clientset, err := kubeClient.NewForConfig(config)
-	if err != nil {
-		return 0, err
-	}
-
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+func discoverGPUs(kClient *kubeClient.Clientset) (int, error) {
+	nodes, err := kClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return 0, err
 	}
 
 	totalGPUs := 0
 	for _, node := range nodes.Items {
-		gpus := node.Status.Capacity["nvidia.com/gpu"]
-		totalGPUs += int(gpus.Value())
+		totalGPUs += countGPUs(node)
 	}
 	return totalGPUs, err
+}
+
+func countGPUs(node corev1.Node) int {
+	gpus := node.Status.Capacity["nvidia.com/gpu"]
+	return int(gpus.Value())
 }
 
 // NewScheduler creates a new scheduler
@@ -105,7 +107,12 @@ func NewScheduler(id string, kConfig *rest.Config, session *mgo.Session, databas
 		return nil, err
 	}
 
-	gpus, err := discoverGPUs(kConfig)
+	kClient, err := kubeClient.NewForConfig(kConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	gpus, err := discoverGPUs(kClient)
 	if err != nil {
 		return nil, err
 	}
@@ -119,15 +126,19 @@ func NewScheduler(id string, kConfig *rest.Config, session *mgo.Session, databas
 	if err != nil {
 		return nil, err
 	}
+
 	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactoryWithOptions(mpiJobClientSet, 0,
 		kubeflowinformers.WithNamespace(config.Namespace))
 	mpiJobInformer := kubeflowInformerFactory.Kubeflow().V1().MPIJobs().Informer()
+
+	nodeInformer := kubeinformers.NewSharedInformerFactory(kClient, 0).Core().V1().Nodes().Informer()
 
 	s := &Scheduler{
 		SchedulerID:    id,
 		GPUAvailable:   gpus,
 		mpiClient:      c,
 		mpiJobInformer: mpiJobInformer,
+		nodeInformer:   nodeInformer,
 
 		Queue:         q,
 		JobMPIJobs:    map[string]*kubeflowv1.MPIJob{},
@@ -158,13 +169,22 @@ func NewScheduler(id string, kConfig *rest.Config, session *mgo.Session, databas
 		},
 	)
 
+	s.nodeInformer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    s.addNode,
+			UpdateFunc: s.updateNode,
+			DeleteFunc: s.deleteNode,
+		},
+	)
+
 	return s, nil
 }
 
 func (s *Scheduler) Run() {
 	klog.InfoS("Starting scheduler", "scheduler", s.SchedulerID)
-	klog.InfoS("Discovered total number of GPUs", "scheduler", s.SchedulerID, "gpus", s.GPUAvailable)
 	defer klog.InfoS("Stopping scheduler", "scheduler", s.SchedulerID)
+
+	klog.InfoS("Discovered total number of GPUs", "numGpus", s.GPUAvailable, "scheduler", s.SchedulerID)
 
 	// defer close channels ..?
 
@@ -173,9 +193,11 @@ func (s *Scheduler) Run() {
 
 	stopInformerCh := make(chan struct{})
 	go s.mpiJobInformer.Run(stopInformerCh)
+	go s.nodeInformer.Run(stopInformerCh)
 	if !cache.WaitForCacheSync(
 		stopInformerCh,
-		s.mpiJobInformer.HasSynced) {
+		s.mpiJobInformer.HasSynced,
+		s.nodeInformer.HasSynced) {
 		err := errors.New("Failed to WaitForCacheSync")
 		klog.ErrorS(err, "Scheduler failed to WaitForCacheSync", "scheduler", s.SchedulerID)
 		klog.Flush()
@@ -520,9 +542,64 @@ func (s *Scheduler) handleJobFailed(job string) {
 	s.ReschedCh <- now
 }
 
-// Update cluster view (e.g. availiable GPU count), may need clusterView structure
-// func (s *Scheduler) updateClusterView() () {
-// }
+func (s *Scheduler) addNode(obj interface{}) {
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to add Node", "node", klog.KObj(node),
+			"scheduler", s.SchedulerID)
+		return
+	}
+	defer klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", s.GPUAvailable, "scheduler", s.SchedulerID)
+
+	s.SchedulerLock.Lock()
+	defer s.SchedulerLock.Unlock()
+
+	s.GPUAvailable += countGPUs(*node)
+	s.ReschedCh <- time.Now()
+}
+
+func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
+	oldNode, ok := oldObj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(oldNode),
+			"scheduler", s.SchedulerID)
+		return
+	}
+	newNode, ok := newObj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(newNode),
+			"scheduler", s.SchedulerID)
+		return
+	}
+	// Informer may deliver an Update event with UID changed if a delete is
+	// immediately followed by a create.
+	if oldNode.UID != newNode.UID {
+		defer klog.InfoS("Node updated", "node", klog.KObj(newNode), "numGpus", s.GPUAvailable,
+			"scheduler", s.SchedulerID)
+
+		s.SchedulerLock.Lock()
+		defer s.SchedulerLock.Unlock()
+
+		s.GPUAvailable += (countGPUs(*newNode) - countGPUs(*oldNode))
+		s.ReschedCh <- time.Now()
+	}
+}
+
+func (s *Scheduler) deleteNode(obj interface{}) {
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to delete Node", "node", klog.KObj(node),
+			"scheduler", s.SchedulerID)
+		return
+	}
+	defer klog.InfoS("Node deleted", "node", klog.KObj(node), "numGpus", s.GPUAvailable, "scheduler", s.SchedulerID)
+
+	s.SchedulerLock.Lock()
+	defer s.SchedulerLock.Unlock()
+
+	s.GPUAvailable -= countGPUs(*node)
+	s.ReschedCh <- time.Now()
+}
 
 func (s *Scheduler) Stop() {
 	s.StopSchedulerCh <- time.Now()

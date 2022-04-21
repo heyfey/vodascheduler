@@ -40,3 +40,8 @@ func hasToleration(pod *corev1.Pod, toleration corev1.Toleration) bool {
 	}
 	return false
 }
+
+func countGPUs(node corev1.Node) int {
+	gpus := node.Status.Capacity["nvidia.com/gpu"]
+	return int(gpus.Value())
+}
