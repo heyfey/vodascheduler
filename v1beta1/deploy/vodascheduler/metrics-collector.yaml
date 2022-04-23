@@ -1,0 +1,27 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: metrics-collector
+  namespace: voda-scheduler
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: metrics-collector
+            image: heyfey/voda-metrics-collector
+            imagePullPolicy: IfNotPresent
+            volumeMounts:
+            - name: metrics
+              mountPath: /metrics
+          volumes:
+            - name: metrics
+              persistentVolumeClaim:
+                claimName: voda-pvc-metrics
+          restartPolicy: Never
+          tolerations:
+          - key: "vodascheduler/hostname"
+            operator: "Exists"
+            effect: "NoExecute"

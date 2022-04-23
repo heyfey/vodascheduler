@@ -1,0 +1,7 @@
+spec:
+  template:
+    spec:
+      tolerations:
+      - key: "vodascheduler/hostname" 
+        operator: "Exists"
+        effect: "NoExecute"
