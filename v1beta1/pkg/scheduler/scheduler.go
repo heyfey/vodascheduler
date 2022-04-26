@@ -149,8 +149,8 @@ func NewScheduler(id string, kConfig *rest.Config, session *mgo.Session, databas
 
 		Algorithm: algorithm.NewElasticFIFO(gpus, id),
 
-		ReschedCh:           make(chan time.Time, reschedChannelSize),
-		StopSchedulerCh:     make(chan time.Time),
+		reschedCh:           make(chan time.Time, reschedChannelSize),
+		stopSchedulerCh:     make(chan time.Time),
 		reschedBlockedUntil: time.Now(),
 		lastResched:         time.Now(),
 
@@ -210,7 +210,7 @@ func (s *Scheduler) Run() {
 
 	for {
 		select {
-		case r := <-s.ReschedCh:
+		case r := <-s.reschedCh:
 			if r.After(s.lastResched) {
 				klog.V(4).InfoS("Received rescheduling event, may be blocked because of rate limit",
 					"scheduler", s.SchedulerID, "receivedAtTimestamp", r, "lastReschedulingAtTimestamp", s.lastResched,
@@ -228,7 +228,7 @@ func (s *Scheduler) Run() {
 				klog.V(5).InfoS("Ignored rescheduling event", "scheduler", s.SchedulerID, "receivedAtTimestamp", r)
 			}
 
-		case _ = <-s.StopSchedulerCh:
+		case _ = <-s.stopSchedulerCh:
 			stopTickerCh <- true
 			stopInformerCh <- struct{}{}
 			return
