@@ -63,8 +63,8 @@ type Scheduler struct {
 	Metrics SchedulerMetrics
 
 	// channels used for main logic of the scheduler, should only be cousumed by scheduler.Run()
-	ReschedCh       chan time.Time
-	StopSchedulerCh chan time.Time
+	reschedCh       chan time.Time
+	stopSchedulerCh chan time.Time
 
 	lastResched         time.Time
 	reschedBlockedUntil time.Time
@@ -178,6 +178,10 @@ func NewScheduler(id string, kConfig *rest.Config, session *mgo.Session, databas
 	)
 
 	return s, nil
+}
+
+func (s *Scheduler) TriggerResched() {
+	s.reschedCh <- time.Now()
 }
 
 func (s *Scheduler) Run() {
@@ -519,8 +523,7 @@ func (s *Scheduler) handleJobCompleted(job string) {
 	s.Queue.Delete(job)
 	s.Metrics.jobsCompletedCounter.Inc()
 
-	now := time.Now()
-	s.ReschedCh <- now
+	s.TriggerResched()
 	return
 }
 
@@ -538,8 +541,7 @@ func (s *Scheduler) handleJobFailed(job string) {
 	s.Queue.Delete(job)
 	s.Metrics.jobsFailedCounter.Inc()
 
-	now := time.Now()
-	s.ReschedCh <- now
+	s.TriggerResched()
 }
 
 func (s *Scheduler) addNode(obj interface{}) {
@@ -555,7 +557,7 @@ func (s *Scheduler) addNode(obj interface{}) {
 	defer s.SchedulerLock.Unlock()
 
 	s.GPUAvailable += countGPUs(*node)
-	s.ReschedCh <- time.Now()
+	s.TriggerResched()
 }
 
 func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
@@ -581,7 +583,7 @@ func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
 		defer s.SchedulerLock.Unlock()
 
 		s.GPUAvailable += (countGPUs(*newNode) - countGPUs(*oldNode))
-		s.ReschedCh <- time.Now()
+		s.TriggerResched()
 	}
 }
 
@@ -598,11 +600,11 @@ func (s *Scheduler) deleteNode(obj interface{}) {
 	defer s.SchedulerLock.Unlock()
 
 	s.GPUAvailable -= countGPUs(*node)
-	s.ReschedCh <- time.Now()
+	s.TriggerResched()
 }
 
 func (s *Scheduler) Stop() {
-	s.StopSchedulerCh <- time.Now()
+	s.stopSchedulerCh <- time.Now()
 	return
 }
 
@@ -668,7 +670,7 @@ func (s *Scheduler) updateTimeMetrics(stopTickerCh chan bool) {
 			// trigger rescheduling if priority changed
 			if priorityChanged {
 				klog.V(3).InfoS("Triggered rescheduling because of priority changed", "scheduler", s.SchedulerID)
-				s.ReschedCh <- time.Now()
+				s.TriggerResched()
 			}
 		}
 	}

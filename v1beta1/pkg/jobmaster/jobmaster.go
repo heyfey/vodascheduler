@@ -177,8 +177,7 @@ func (jm *JobMaster) CreateTrainingJob(data []byte) (string, error) {
 	sched.Queue.Enqueue(*t)
 	sched.SchedulerLock.Unlock()
 
-	// trigger resched
-	sched.ReschedCh <- now
+	sched.TriggerResched()
 
 	// TODO: Bad design, metrics should be updated by scheduler itself.
 	//       Considering use a function to accept new job in scheduler.
@@ -301,7 +300,7 @@ func (jm *JobMaster) DeleteTrainingJob(jobName string) error {
 
 	// trigger resched if delete a scheduled job
 	if scheduled {
-		sched.ReschedCh <- time.Now()
+		sched.TriggerResched()
 	}
 
 	// TODO: Bad design, metrics should be updated by scheduler itself.
