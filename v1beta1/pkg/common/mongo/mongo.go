@@ -62,14 +62,14 @@ func ConnectMongo() *mgo.Session {
 	}
 	port := addrs[0].Port
 
-	mongoURI := ip.String() + ":" + fmt.Sprint(port)
-	session, err := mgo.Dial(mongoURI)
+	url := ip.String() + ":" + fmt.Sprint(port)
+	session, err := mgo.Dial(url)
 	if err != nil {
-		klog.ErrorS(err, "Failed to connect to mongodb", "mongoURI", mongoURI)
+		klog.ErrorS(err, "Failed to connect to mongodb", "url", url)
 		klog.Flush()
 		os.Exit(1)
 	} else {
-		klog.InfoS("Connected to mongodb", "mongoURI", mongoURI)
+		klog.InfoS("Connected to mongodb", "url", url)
 	}
 	return session
 }

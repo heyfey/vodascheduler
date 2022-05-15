@@ -1,23 +1,26 @@
-// https://dev.to/lucasnevespereira/write-a-rest-api-in-golang-following-best-practices-pe9
-
 package service
 
 import (
 	"github.com/gorilla/mux"
 	"github.com/heyfey/vodascheduler/config"
-	"github.com/heyfey/vodascheduler/pkg/jobmaster"
+	"github.com/heyfey/vodascheduler/pkg/common/mongo"
+	"github.com/heyfey/vodascheduler/pkg/common/rabbitmq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/streadway/amqp"
+	"gopkg.in/mgo.v2"
 )
 
 type Service struct {
-	JM     *jobmaster.JobMaster
-	Router *mux.Router
+	Router  *mux.Router
+	session *mgo.Session
+	mqConn  *amqp.Connection
 }
 
-func NewService(kubeConfig string) *Service {
+func NewService() *Service {
 	s := &Service{
-		JM:     jobmaster.NewJobMaster(kubeConfig),
-		Router: mux.NewRouter(),
+		Router:  mux.NewRouter(),
+		session: mongo.ConnectMongo(),
+		mqConn:  rabbitmq.ConnectRabbitMQ(),
 	}
 	s.initRoutes()
 	return s
@@ -27,6 +30,5 @@ func (s *Service) initRoutes() {
 	s.Router.HandleFunc("/", homePage)
 	s.Router.HandleFunc(config.EntryPoint, s.createTrainingJobHandler()).Methods("POST")
 	s.Router.HandleFunc(config.EntryPoint, s.deleteTrainingJobHandler()).Methods("DELETE")
-	s.Router.HandleFunc(config.EntryPoint, s.getAllTrainingJobHandler()).Methods("GET")
 	s.Router.Handle("/metrics", promhttp.Handler())
 }

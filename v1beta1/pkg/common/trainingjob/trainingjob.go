@@ -7,84 +7,86 @@ import (
 
 	"github.com/heyfey/vodascheduler/pkg/common/types"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
-	// "github.com/prometheus/client_golang/prometheus"
 )
 
-// JobMetrics represents metrics of a job.
-type JobMetrics struct {
-	Name        string `bson:"name" json:"name"`
-	LastUpdated time.Time
-
-	RunningTime time.Duration
-	WaitingTime time.Duration
-	GpuTime     time.Duration
-	TotalTime   time.Duration
-
-	LastRunningTime time.Duration
-	LastWaitingTime time.Duration
-	LastGpuTime     time.Duration
-
-	// Preemption times of the job.
-	// Preemptions prometheus.Counter
-	// Number of GPUs for the job.
-	// workers prometheus.Gauge
-}
-
-// TrainingJob represents a single training job in the queue
 type TrainingJob struct {
-	// ID        bson.ObjectId `bson:"_id" json:"id"`
-	JobName       string    `bson:"name" json:"name"`
-	JobCollection string    `bson:"collection" json:"collection"`
-	Submitted     time.Time `bson:"submitted" json:"submitted"`
-	Config        JobConfig `bson:"config" json:"config"`
-	Info          JobInfo   `bson:"info" json:"info"`
-	Priority      int
-
-	// first started/scheduled time of the training job, used in Tiresias algorithm
-	FirstStarted time.Time
+	Name       string              `bson:"job_name" json:"job_name"`
+	Category   string              `bson:"job_category" json:"job_category"`
+	User       string              `bson:"user" json:"user"`
+	Kind       types.JobKindType   `bson:"kind" json:"kind"`
+	Spec       kubeflowv1.MPIJob   `bson:"spec" json:"spec"`
+	GpuType    string              `bson:"gpu_type" json:"gpu_type"`
+	Priority   int                 `bson:"priority" json:"priority"`
+	Status     types.JobStatusType `bson:"status" json:"status"`
+	SubmitTime time.Time           `bson:"submit_timestamp" json:"submit_timestamp"`
+	FinishTime time.Time           `bson:"finish_timestamp" json:"finish_timestamp"`
+	Config     JobConfig           `bson:"config" json:"config"`
+	Metrics    JobMetrics          `bson:"time_metrics" json:"time_metrics"`
 }
 
 // JobConfig represents user training configurations specified by user
 type JobConfig struct {
-	NP     int `bson:"np" json:"np"`
-	MinGPU int `bson:"min_np" json:"min_np"`
-	MaxGPU int `bson:"max_np" json:"max_np"`
-	Epochs int `bson:"epochs" json:"epochs"`
+	NumProc    int `bson:"num_proc" json:"num_proc"`
+	MinNumProc int `bson:"min_num_proc" json:"min_num_proc"`
+	MaxNumProc int `bson:"max_num_proc" json:"max_num_proc"`
+	Epochs     int `bson:"epochs" json:"epochs"`
+}
+
+// JobMetrics represents time metrics of a job.
+type JobMetrics struct {
+	RunningDuration time.Duration `bson:"running_time" json:"running_time"`
+	WaitingDuration time.Duration `bson:"waiting_time" json:"waiting_time"`
+	GpuDuration     time.Duration `bson:"gpu_time" json:"gpu_time"`
+	TotalDuration   time.Duration `bson:"total_time" json:"total_time"`
+
+	LastRunningDuration time.Duration `bson:"last_running_time" json:"last_running_time"`
+	LastWaitingDuration time.Duration `bson:"last_waiting_time" json:"last_waiting_time"`
+	LastGpuDuration     time.Duration `bson:"last_gpu_time" json:"last_gpu_time"`
+
+	// first started time of the training job, used in Tiresias algorithm
+	FirstStartTime time.Time `bson:"first_start_timestamp" json:"first_start_timestamp"`
+
+	LastUpdateTime time.Time `bson:"last_update_timestamp" json:"last_update_timestamp"`
 }
 
 // JobInfo represents history/estimated information of a training job
 type JobInfo struct {
-	EstimatedRemainningTimeSec float32
-	Efficiency                 map[string]float32
-	Speedup                    map[string]float32
+	Name                       string             `bson:"job_name" json:"job_name"`
+	Category                   string             `bson:"job_category" json:"job_category"`
+	GpuType                    string             `bson:"gpu_type" json:"gpu_type"`
+	EstimatedRemainningTimeSec float32            `bson:"estimate_remainning_time_seconds" json:"estimate_remainning_time_seconds"`
+	Speedup                    map[string]float32 `bson:"speedup" json:"speedup"`
+	Efficiency                 map[string]float32 `bson:"efficiency" json:"efficiency"`
 }
 
 // newTrainingJob creates a new training job according to MPIJob representation
-func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.Time) (*TrainingJob, error) {
+func NewTrainingJob(mpijob kubeflowv1.MPIJob, category string, submitTime time.Time) (*TrainingJob, error) {
 
 	var (
-		np     int
-		minGPU int
-		maxGPU int
-		epochs int
-		err    error
+		numProc    int
+		minNumProc int
+		maxNumProc int
+		epochs     int
+		priority   int
+		err        error
 	)
 
+	// Read job config from job spec
 	launcherSpec := mpijob.Spec.MPIReplicaSpecs["Launcher"]
-	// Parse through EnVar to get job config
+	// Iterate over EnVar to get job config
 	// There should be only one container in the spec
 	env := launcherSpec.Template.Spec.Containers[0].Env
 	for i := 0; i < len(env); i++ {
-		if env[i].Name == string(types.JobMinNP) {
-			if minGPU, err = strconv.Atoi(env[i].Value); err != nil {
+		if env[i].Name == string(types.JobMinNumProc) || env[i].Name == string(types.JobMinNumProcDeprecated) {
+			if minNumProc, err = strconv.Atoi(env[i].Value); err != nil {
 				return nil, err
 			}
-		} else if env[i].Name == string(types.JobMaxNP) {
-			if maxGPU, err = strconv.Atoi(env[i].Value); err != nil {
+		} else if env[i].Name == string(types.JobMaxNumProc) || env[i].Name == string(types.JobMaxNumProcDeprecated) {
+			if maxNumProc, err = strconv.Atoi(env[i].Value); err != nil {
 				return nil, err
 			}
-		} else if env[i].Name == string(types.JobNP) {
-			if np, err = strconv.Atoi(env[i].Value); err != nil {
+		} else if env[i].Name == string(types.JobNumProc) || env[i].Name == string(types.JobNumProcDeprecated) {
+			if numProc, err = strconv.Atoi(env[i].Value); err != nil {
 				return nil, err
 			}
 		} else if env[i].Name == string(types.JobEpochs) {
@@ -95,66 +97,55 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, collection string, submitted time.
 			if env[i].Value != mpijob.ObjectMeta.Name {
 				return nil, errors.New("environment variable JOB_NAME and mpijob.ObjectMeta.Name missmatched")
 			}
+		} else if env[i].Name == string(types.JobPriority) {
+			if priority, err = strconv.Atoi(env[i].Value); err != nil {
+				return nil, err
+			}
 		}
 	}
-	// TODO: error handling if either "MIN_NP", "MAX_NP", "EPOCHs" or "JOB_NAME" is missing or invalid
+	// TODO(heyfey): error handling if either "MIN_NUM_PROC", "MAX_NUM_PROC", "EPOCHs" or "JOB_NAME" is missing or invalid
+	// TODO(heyfey): currently ignore cases that both "MIN_NP" and "MIN_NUM_PROC" present at the same time
 
-	// if NP not specified
-	if np == 0 {
-		np = minGPU
+	// if NUM_PROC not specified
+	if numProc == 0 {
+		numProc = minNumProc
 	}
 
 	config := JobConfig{
-		NP:     np,
-		MinGPU: minGPU,
-		MaxGPU: maxGPU,
-		Epochs: epochs,
+		NumProc:    numProc,
+		MinNumProc: minNumProc,
+		MaxNumProc: maxNumProc,
+		Epochs:     epochs,
 	}
 
-	// JobInfo would be updated from mongodb by scheduler during resched
-	info := JobInfo{}
-
 	t := &TrainingJob{
-		JobName:       mpijob.ObjectMeta.Name,
-		JobCollection: collection,
-		Submitted:     submitted,
-		Config:        config,
-		Info:          info,
-		Priority:      0,
-		FirstStarted:  types.MaxTime,
+		Name:       mpijob.ObjectMeta.GetName(),
+		Category:   category,
+		User:       "heyfey", // TODO(heyfey)
+		Kind:       types.JobMPIJob,
+		Spec:       mpijob,
+		GpuType:    "default", // TODO(heyfey)
+		Priority:   priority,
+		Status:     types.JobWaiting,
+		SubmitTime: submitTime,
+		FinishTime: types.MaxTime,
+		Config:     config,
+		Metrics:    *NewJobMetrics(),
 	}
 	return t, nil
 }
 
-func NewJobMetrics(name string) *JobMetrics {
-	// preemptions := prometheus.NewCounter(prometheus.CounterOpts{
-	// 	Namespace: name,
-	// 	Subsystem: "vodascheduler",
-	// 	Name:      "preemptions",
-	// 	Help:      "Preemption times of the job.",
-	// })
-	// prometheus.MustRegister(preemptions)
-
-	// workers := prometheus.NewGauge(prometheus.GaugeOpts{
-	// 	Namespace: name,
-	// 	Subsystem: "vodascheduler",
-	// 	Name:      "workers",
-	// 	Help:      "Number of GPUs of the job.",
-	// })
-	// prometheus.MustRegister(workers)
-
+func NewJobMetrics() *JobMetrics {
 	m := &JobMetrics{
-		Name:            name,
-		LastUpdated:     time.Now(),
-		RunningTime:     0,
-		WaitingTime:     0,
-		GpuTime:         0,
-		TotalTime:       0,
-		LastRunningTime: 0,
-		LastWaitingTime: 0,
-		LastGpuTime:     0,
-		// Preemptions: preemptions,
-		// workers:     workers,
+		RunningDuration:     0,
+		WaitingDuration:     0,
+		GpuDuration:         0,
+		TotalDuration:       0,
+		LastRunningDuration: 0,
+		LastWaitingDuration: 0,
+		LastGpuDuration:     0,
+		FirstStartTime:      types.MaxTime,
+		LastUpdateTime:      time.Now(),
 	}
 	return m
 }
