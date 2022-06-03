@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/heyfey/vodascheduler/config"
-	"github.com/heyfey/vodascheduler/pkg/scheduler"
+	"github.com/heyfey/vodascheduler/pkg/scheduler/scheduler"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
