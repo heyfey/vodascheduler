@@ -39,13 +39,13 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult
 		return result
 	}
 	for _, job := range jobs {
-		result[job.JobName] = 0
+		result[job.Name] = 0
 	}
 	defer validateResult(a.totalGPU, result, jobs)
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
-		return jobs[i].Submitted.Before(jobs[j].Submitted)
+		return jobs[i].SubmitTime.Before(jobs[j].SubmitTime)
 	})
 
 	K := a.totalGPU
@@ -87,11 +87,12 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult
 			SOL[i][j] = 0
 		}
 	}
-	klog.V(5).InfoS("Initiated DP table", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Initiated DP table", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm)
 
 	for j := 1; j <= J; j++ {
 		for k := 1; k <= K; k++ {
-			for g := 1; g <= feasibleJobs[j].Config.MaxGPU; g++ {
+			for g := 1; g <= feasibleJobs[j].Config.MaxNumProc; g++ {
 				if k-g >= 0 {
 					// calculate the total throughput of relocating g GPUs from
 					// previous (j-1) jobs to job j
@@ -104,7 +105,8 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult
 			}
 		}
 	}
-	klog.V(5).InfoS("Finished DP", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Finished DP", "K", K, "J", J, "P", P, "SOL", SOL, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm)
 
 	if P[J][K] <= 0 {
 		err := errors.New("infeasible")
@@ -116,14 +118,15 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult
 	j := J
 	k := K
 	for j > 0 {
-		klog.V(5).InfoS("Allocating...", "j", j, "k", k, "SOL", SOL[j][k], "job", feasibleJobs[j].JobName,
+		klog.V(5).InfoS("Allocating...", "j", j, "k", k, "SOL", SOL[j][k], "job", feasibleJobs[j].Name,
 			"speedup", feasibleJobs[j].Info.Speedup, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
-		result[feasibleJobs[j].JobName] = SOL[j][k]
+		result[feasibleJobs[j].Name] = SOL[j][k]
 		k -= SOL[j][k]
 		j -= 1
 	}
-	klog.V(4).InfoS("Finished scheduling", "result", result, "FreeGPU", k, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "FreeGPU", k, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm)
 
 	return result
 }

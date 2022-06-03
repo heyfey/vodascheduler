@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/rabbitmq"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
@@ -63,58 +62,25 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	// 1. TODO(heyfey): Validate job spec
 
 	// 2. Pre-process job spec
-	//
-	// In Voda, we identify a job by its metadata.name, which means jobs with
-	// same metadata.name are considered the same and assumed to have similar characteristics.
-	// We also extend all jobs' metadata.name with a timestamp to distinguish them.
-	//
-	// First find record (history information) of the job by its metadata.name in mongodb.
-	// If not present, create and a basic info and insert it to the database.
-	// Then, insert a new record with modified job name (with timestamp added)
-	//
-	// db structure:
-	// | database             | collection | records                        |
-	// | -------------------- | ---------- | ------------------------------ |
-	// | databaseNameJobInfo  | job name 1 | job name with unique timestamp |
-	// | databaseNameJobInfo  | job name 2 | job name with unique timestamp |
-	//
 	jobName := mpijob.GetName()
-	jobCollection := jobName
-
-	sess := s.session.Clone()
-	defer sess.Close()
-
-	info := mongo.TrainingJobInfo{}
-	err = sess.DB(databaseNameJobInfo).C(jobCollection).Find(bson.M{"name": jobName}).One(&info)
-	if err != nil {
-		if err == mgo.ErrNotFound {
-			klog.InfoS("Could not find job info in mongo", "err", err, "database", databaseNameJobInfo,
-				"collection", jobCollection, "jobName", jobName)
-
-			info = mongo.CreateBaseJobInfo(jobName)
-			err = sess.DB(databaseNameJobInfo).C(jobCollection).Insert(info)
-			if err != nil {
-				klog.InfoS("Failed to insert record in mongo", "err", err, "database", databaseNameJobInfo,
-					"collection", jobCollection, "jobName", jobName)
-				return "", err
-			}
-		} else {
-			return "", err
-		}
-	}
+	jobCategory := jobName
 
 	// add timestamp to training job name
 	now := time.Now()
-	// jobName = jobName + "-" + now.Format("20060102-030405")
+	jobName = jobName + "-" + now.Format("20060102-030405")
 	mpijob.SetName(jobName)
 	setEnvJobName(mpijob, jobName)
 
 	// 3. Insert meta to db
-	t, err := trainingjob.NewTrainingJob(*mpijob, jobCollection, now)
+	t, err := trainingjob.NewTrainingJob(mpijob, jobCategory, now)
 	if err != nil {
 		klog.InfoS("Failed to create training job", "err", err, "jobName", jobName)
 		return "", err
 	}
+
+	sess := s.session.Clone()
+	defer sess.Close()
+
 	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(t)
 	if err != nil {
 		klog.InfoS("Failed to create training job", "err", err, "jobName", jobName)

@@ -57,8 +57,8 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 		// put jobs into queues depends on its priority
 		queues[job.Priority] = append(queues[job.Priority], job)
 		// initiate gain; do interpolation because minGPU may not equal to 1
-		gain[job.JobName] = job.Info.Speedup[fmt.Sprint(job.Config.MinGPU)] / float32(job.Config.MinGPU)
-		result[job.JobName] = 0
+		gain[job.Name] = job.Info.Speedup[fmt.Sprint(job.Config.MinNumProc)] / float32(job.Config.MinNumProc)
+		result[job.Name] = 0
 	}
 
 	// Sort each queue by first started time if no distribution provided.
@@ -66,7 +66,7 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 	// unnecessary preemptions.
 	for priority := 0; priority < TiresiasQueueNum; priority++ {
 		sort.SliceStable(queues[priority], func(i, j int) bool {
-			return queues[priority][i].FirstStarted.Before(queues[priority][j].FirstStarted)
+			return queues[priority][i].Metrics.FirstStartTime.Before(queues[priority][j].Metrics.FirstStartTime)
 		})
 	}
 
@@ -77,11 +77,11 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 	for priority := 0; priority < TiresiasQueueNum; priority++ {
 		for _, job := range queues[priority] {
 			// if could allocate NP to the job, allocate it
-			if freeGPU >= job.Config.NP {
-				result[job.JobName] = job.Config.NP
-				freeGPU -= job.Config.NP
+			if freeGPU >= job.Config.NumProc {
+				result[job.Name] = job.Config.NumProc
+				freeGPU -= job.Config.NumProc
 				pendings -= 1
-				gain[job.JobName] = calNextGain(job.Info.Speedup, result[job.JobName])
+				gain[job.Name] = calNextGain(job.Info.Speedup, result[job.Name])
 			}
 		}
 	}
@@ -93,10 +93,10 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 		// compact the jobs with priority >= 1 from NP to minGPU
 		for priority := 1; priority < TiresiasQueueNum; priority++ {
 			for _, job := range queues[priority] {
-				if result[job.JobName] != 0 {
-					freeGPU += (result[job.JobName] - job.Config.MinGPU) // free GPUs
-					result[job.JobName] = job.Config.MinGPU
-					gain[job.JobName] = calNextGain(job.Info.Speedup, result[job.JobName])
+				if result[job.Name] != 0 {
+					freeGPU += (result[job.Name] - job.Config.MinNumProc) // free GPUs
+					result[job.Name] = job.Config.MinNumProc
+					gain[job.Name] = calNextGain(job.Info.Speedup, result[job.Name])
 				}
 			}
 		}
@@ -108,8 +108,8 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 	// remove the jobs that are already sastified or not possible to run
 	toRemove := make([]string, 0)
 	for _, job := range jobs {
-		if result[job.JobName] >= job.Config.MaxGPU || freeGPU < job.Config.MinGPU {
-			toRemove = append(toRemove, job.JobName)
+		if result[job.Name] >= job.Config.MaxNumProc || freeGPU < job.Config.MinNumProc {
+			toRemove = append(toRemove, job.Name)
 		}
 	}
 	for _, job := range toRemove {
@@ -125,30 +125,30 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 		})
 		// sort the queue by gain in descending order
 		sort.SliceStable(jobs, func(i, j int) bool {
-			return gain[jobs[i].JobName] > gain[jobs[j].JobName]
+			return gain[jobs[i].Name] > gain[jobs[j].Name]
 		})
 		job := jobs[0] // get the job with the most gain
-		klog.V(5).InfoS("Found the next most gain job", "jobs", jobs, "freeGpu", freeGPU, "job", job.JobName, "gain", gain, "scheduler", a.schedulerID, "algorithm", a.algorithm)
-		if gain[job.JobName] <= 0 {
+		klog.V(5).InfoS("Found the next most gain job", "jobs", jobs, "freeGpu", freeGPU, "job", job.Name, "gain", gain, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+		if gain[job.Name] <= 0 {
 			// there won't be any efficiency gain to allocate extra gpu to any job
 			klog.V(5).InfoS("No more gains", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 			break
 		}
 		// job should receive at least minGPU if it is scheduled
-		if result[job.JobName] == 0 {
-			if freeGPU >= job.Config.MinGPU {
-				result[job.JobName] = job.Config.MinGPU
-				freeGPU -= job.Config.MinGPU
-				gain[job.JobName] = calNextGain(job.Info.Speedup, result[job.JobName])
+		if result[job.Name] == 0 {
+			if freeGPU >= job.Config.MinNumProc {
+				result[job.Name] = job.Config.MinNumProc
+				freeGPU -= job.Config.MinNumProc
+				gain[job.Name] = calNextGain(job.Info.Speedup, result[job.Name])
 			} else {
-				jobs = remove(jobs, index(jobs, job.JobName))
+				jobs = remove(jobs, index(jobs, job.Name))
 			}
 		} else {
-			result[job.JobName] += 1
+			result[job.Name] += 1
 			freeGPU -= 1
-			gain[job.JobName] = calNextGain(job.Info.Speedup, result[job.JobName])
-			if result[job.JobName] >= job.Config.MaxGPU {
-				jobs = remove(jobs, index(jobs, job.JobName))
+			gain[job.Name] = calNextGain(job.Info.Speedup, result[job.Name])
+			if result[job.Name] >= job.Config.MaxNumProc {
+				jobs = remove(jobs, index(jobs, job.Name))
 			}
 		}
 	}
@@ -179,7 +179,7 @@ func remove(slice ReadyJobs, s int) ReadyJobs {
 // training job exist, or it will panic.
 func index(jobs ReadyJobs, name string) int {
 	for i := 0; i < len(jobs); i++ {
-		if jobs[i].JobName == name {
+		if jobs[i].Name == name {
 			return i
 		}
 	}

@@ -38,14 +38,14 @@ func (a *ElasticSRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 
 	// allocate the basic portion
 	for _, job := range jobs {
-		result[job.JobName] = 0
-		sastified[job.JobName] = false
+		result[job.Name] = 0
+		sastified[job.Name] = false
 		// if could allocate minGPU to the job, allocate it
-		if freeGPU >= job.Config.MinGPU {
-			result[job.JobName] = job.Config.MinGPU
-			freeGPU -= job.Config.MinGPU
+		if freeGPU >= job.Config.MinNumProc {
+			result[job.Name] = job.Config.MinNumProc
+			freeGPU -= job.Config.MinNumProc
 		} else {
-			sastified[job.JobName] = true // unable to allocate minGPU to the job
+			sastified[job.Name] = true // unable to allocate minGPU to the job
 		}
 	}
 
@@ -55,11 +55,11 @@ func (a *ElasticSRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 	// TODO: don't allocate more GPUs to a job if there is no speedup
 	for freeGPU > 0 && !allTrue(sastified) {
 		for _, job := range jobs {
-			if result[job.JobName] < job.Config.MaxGPU || !sastified[job.JobName] {
-				result[job.JobName] += 1
+			if result[job.Name] < job.Config.MaxNumProc || !sastified[job.Name] {
+				result[job.Name] += 1
 				freeGPU -= 1
-				if result[job.JobName] == job.Config.MaxGPU {
-					sastified[job.JobName] = true
+				if result[job.Name] == job.Config.MaxNumProc {
+					sastified[job.Name] = true
 				}
 				if freeGPU == 0 {
 					break

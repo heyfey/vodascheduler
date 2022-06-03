@@ -9,19 +9,24 @@ import (
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
 )
 
+const (
+	maxNumGpu = 32
+)
+
 type TrainingJob struct {
 	Name       string              `bson:"job_name" json:"job_name"`
 	Category   string              `bson:"job_category" json:"job_category"`
 	User       string              `bson:"user" json:"user"`
 	Kind       types.JobKindType   `bson:"kind" json:"kind"`
-	Spec       kubeflowv1.MPIJob   `bson:"spec" json:"spec"`
+	Spec       *kubeflowv1.MPIJob  `bson:"spec" json:"spec"`
 	GpuType    string              `bson:"gpu_type" json:"gpu_type"`
 	Priority   int                 `bson:"priority" json:"priority"`
 	Status     types.JobStatusType `bson:"status" json:"status"`
 	SubmitTime time.Time           `bson:"submit_timestamp" json:"submit_timestamp"`
 	FinishTime time.Time           `bson:"finish_timestamp" json:"finish_timestamp"`
 	Config     JobConfig           `bson:"config" json:"config"`
-	Metrics    JobMetrics          `bson:"time_metrics" json:"time_metrics"`
+	Metrics    *JobMetrics         `bson:"time_metrics" json:"time_metrics"`
+	Info       JobInfo             `bson:"info" json:"info"`
 }
 
 // JobConfig represents user training configurations specified by user
@@ -60,7 +65,7 @@ type JobInfo struct {
 }
 
 // newTrainingJob creates a new training job according to MPIJob representation
-func NewTrainingJob(mpijob kubeflowv1.MPIJob, category string, submitTime time.Time) (*TrainingJob, error) {
+func NewTrainingJob(mpijob *kubeflowv1.MPIJob, category string, submitTime time.Time) (*TrainingJob, error) {
 
 	var (
 		numProc    int
@@ -118,6 +123,9 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, category string, submitTime time.T
 		Epochs:     epochs,
 	}
 
+	// JobInfo would be updated from mongodb by scheduler during resched
+	info := NewBaseJobInfo(mpijob.GetName(), category, "default") // TODO(heyfey)
+
 	t := &TrainingJob{
 		Name:       mpijob.ObjectMeta.GetName(),
 		Category:   category,
@@ -130,7 +138,8 @@ func NewTrainingJob(mpijob kubeflowv1.MPIJob, category string, submitTime time.T
 		SubmitTime: submitTime,
 		FinishTime: types.MaxTime,
 		Config:     config,
-		Metrics:    *NewJobMetrics(),
+		Metrics:    NewJobMetrics(),
+		Info:       info,
 	}
 	return t, nil
 }
@@ -148,4 +157,25 @@ func NewJobMetrics() *JobMetrics {
 		LastUpdateTime:      time.Now(),
 	}
 	return m
+}
+
+func NewBaseJobInfo(name string, category string, gpuType string) JobInfo {
+	speedup := map[string]float32{"0": 0.0}
+	efficiency := map[string]float32{"0": 0.0}
+
+	// assume linear speedup
+	for i := 1; i <= maxNumGpu+1; i++ {
+		speedup[strconv.Itoa(i)] = float32(i)
+		efficiency[strconv.Itoa(i)] = float32(1)
+	}
+
+	i := JobInfo{
+		Name:                       name,
+		Category:                   category,
+		GpuType:                    gpuType,
+		EstimatedRemainningTimeSec: 0,
+		Speedup:                    speedup,
+		Efficiency:                 efficiency,
+	}
+	return i
 }

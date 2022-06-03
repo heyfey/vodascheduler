@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	maxGPUNum = 32
+	maxNumGpu = 32
 )
 
 type TrainingJobInfo struct {
@@ -79,7 +79,7 @@ func CreateBaseJobInfo(jobName string) TrainingJobInfo {
 	speedup := map[string]float32{"0": 0.0}
 	efficiency := map[string]float32{"0": 0.0}
 	time := map[string]float32{"0": 0.0}
-	for i := 1; i <= maxGPUNum+1; i++ {
+	for i := 1; i <= maxNumGpu+1; i++ {
 		speedup[strconv.Itoa(i)] = float32(i)
 		efficiency[strconv.Itoa(i)] = float32(1)
 		time[strconv.Itoa(i)] = float32(1)

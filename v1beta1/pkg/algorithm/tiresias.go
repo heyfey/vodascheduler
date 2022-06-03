@@ -70,27 +70,31 @@ func (a *Tiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	// unnecessary preemptions.
 	for priority := 0; priority < TiresiasQueueNum; priority++ {
 		sort.SliceStable(queues[priority], func(i, j int) bool {
-			return queues[priority][i].FirstStarted.Before(queues[priority][j].FirstStarted)
+			return queues[priority][i].Metrics.FirstStartTime.Before(queues[priority][j].Metrics.FirstStartTime)
 		})
 	}
 
 	// TODO(heyfey): unable to log TiresiasThresholdsSec correctly
-	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob)
+	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec,
+		"promoteKnob", TiresiasPromoteKnob)
 
 	// allocate the basic portion
 	for priority := 0; priority < TiresiasQueueNum; priority++ {
 		for _, job := range queues[priority] {
-			result[job.JobName] = 0
+			result[job.Name] = 0
 			// if could allocate NP to the job, allocate it
-			if freeGPU >= job.Config.NP {
-				result[job.JobName] = job.Config.NP
-				freeGPU -= job.Config.NP
+			if freeGPU >= job.Config.NumProc {
+				result[job.Name] = job.Config.NumProc
+				freeGPU -= job.Config.NumProc
 			}
 		}
 	}
 
 	// TODO: unable to log TiresiasThresholdsSec correctly
-	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec,
+		"promoteKnob", TiresiasPromoteKnob)
 
 	validateResult(a.totalGPU, result, jobs)
 	return result

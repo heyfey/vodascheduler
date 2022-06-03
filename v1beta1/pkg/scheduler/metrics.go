@@ -53,41 +53,41 @@ func (s *Scheduler) initSchedulerMetrics() SchedulerMetrics {
 			Name: "voda_scheduler_jobs_waiting",
 			Help: "Number of waiting jobs",
 		},
-			s.getWaitingJobsNum,
+			s.getNumWaitingJobs,
 		),
 		GPUInUseGaugeFunc: promauto.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "voda_scheduler_gpus_inuse",
 			Help: "Number of GPUs in use",
 		},
-			s.getGPUInUseNum,
+			s.getNumGpuInUse,
 		),
 	}
 
 	return m
 }
 
-// getWaitingJobsNum calculates the number of waiting jobs.
+// getNumWaitingJobs calculates the number of waiting jobs.
 // It is a questionable design because of 1. linear time complexity that may not
 // necessary 2. it aquires lock, that may harm performence.
 // Better use Gauge instead of GaugeFunc.
-func (s *Scheduler) getWaitingJobsNum() float64 {
+func (s *Scheduler) getNumWaitingJobs() float64 {
 	s.SchedulerLock.RLock()
 	defer s.SchedulerLock.RUnlock()
 
 	count := 0
-	for _, status := range s.JobStatuses {
-		if status == types.JobWaiting {
+	for _, job := range s.ReadyJobsMap {
+		if job.Status == types.JobWaiting {
 			count += 1
 		}
 	}
 	return float64(count)
 }
 
-// getGPUInUseNum calculates the number of GPUs in use.
+// getNumGpuInUse calculates the number of GPUs in use.
 // It is a questionable design because of 1. linear time complexity that may not
 // necessary 2. it aquires lock, that may harm performence.
 // Better use Gauge instead of GaugeFunc.
-func (s *Scheduler) getGPUInUseNum() float64 {
+func (s *Scheduler) getNumGpuInUse() float64 {
 	s.SchedulerLock.RLock()
 	defer s.SchedulerLock.RUnlock()
 

@@ -33,7 +33,7 @@ func NewAFSL(totalGPU int, id string) *AFSL {
 func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	result = make(map[string]int)
 	for _, job := range jobs {
-		result[job.JobName] = 0
+		result[job.Name] = 0
 	}
 	// keep the original jobs for later validation
 	oriJobs := make(ReadyJobs, len(jobs))
@@ -42,20 +42,20 @@ func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
-		return jobs[i].Submitted.Before(jobs[j].Submitted)
+		return jobs[i].SubmitTime.Before(jobs[j].SubmitTime)
 	})
 
 	freeGPU := a.totalGPU
 	for freeGPU > 0 && len(jobs) > 0 {
 		job := a.topPriority(jobs, result)
-		result[job.JobName] += 1
+		result[job.Name] += 1
 		freeGPU -= 1
 
-		klog.V(5).InfoS("Allocated 1 GPU to the top priority job", "job", job.JobName, "result", result, "freeGpu", freeGPU,
+		klog.V(5).InfoS("Allocated 1 GPU to the top priority job", "job", job.Name, "result", result, "freeGpu", freeGPU,
 			"scheduler", a.schedulerID, "algorithm", a.algorithm)
 
-		if result[job.JobName] >= job.Config.MaxGPU {
-			jobs = remove(jobs, index(jobs, job.JobName))
+		if result[job.Name] >= job.Config.MaxNumProc {
+			jobs = remove(jobs, index(jobs, job.Name))
 		}
 	}
 
@@ -71,13 +71,13 @@ func (a *AFSL) topPriority(jobs ReadyJobs, result types.JobScheduleResult) train
 	j := jobs[0]
 	for i := 1; i < len(jobs); i++ {
 		jb := jobs[i]
-		if result[j.JobName] == 0 && result[jb.JobName] == 0 {
+		if result[j.Name] == 0 && result[jb.Name] == 0 {
 			if j.Info.EstimatedRemainningTimeSec >= jb.Info.EstimatedRemainningTimeSec {
 				j = jb
 			}
 		} else {
-			lenA := a.jobLength(j, result[j.JobName])
-			lenB := a.jobLength(jb, result[j.JobName])
+			lenA := a.jobLength(j, result[j.Name])
+			lenB := a.jobLength(jb, result[j.Name])
 			if lenA >= lenB {
 				j, jb = jb, j // let j be the shorter job and jb be the longer job
 			}
@@ -98,7 +98,7 @@ func (a *AFSL) jobLength(job trainingjob.TrainingJob, workers int) float64 {
 }
 
 func (a *AFSL) evaluate(j trainingjob.TrainingJob, jb trainingjob.TrainingJob, result types.JobScheduleResult) bool {
-	left := (jb.Info.Speedup[fmt.Sprint(result[jb.JobName]+1)] - jb.Info.Speedup[fmt.Sprint(result[jb.JobName])]) / jb.Info.Speedup[fmt.Sprint(result[jb.JobName]+1)]
-	right := (j.Info.Speedup[fmt.Sprint(result[j.JobName]+1)] - j.Info.Speedup[fmt.Sprint(result[j.JobName])]) / j.Info.Speedup[fmt.Sprint(result[j.JobName])]
+	left := (jb.Info.Speedup[fmt.Sprint(result[jb.Name]+1)] - jb.Info.Speedup[fmt.Sprint(result[jb.Name])]) / jb.Info.Speedup[fmt.Sprint(result[jb.Name]+1)]
+	right := (j.Info.Speedup[fmt.Sprint(result[j.Name]+1)] - j.Info.Speedup[fmt.Sprint(result[j.Name])]) / j.Info.Speedup[fmt.Sprint(result[j.Name])]
 	return left > right
 }

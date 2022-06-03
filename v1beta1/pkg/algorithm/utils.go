@@ -19,8 +19,8 @@ func validateResult(totalGPU int, result types.JobScheduleResult, jobs ReadyJobs
 	jobMaxGPU := make(map[string]int)
 	jobMinGPU := make(map[string]int)
 	for _, job := range jobs {
-		jobMaxGPU[job.JobName] = job.Config.MaxGPU
-		jobMinGPU[job.JobName] = job.Config.MinGPU
+		jobMaxGPU[job.Name] = job.Config.MaxNumProc
+		jobMinGPU[job.Name] = job.Config.MinNumProc
 	}
 
 	allocatedGPU := 0

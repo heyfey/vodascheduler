@@ -30,22 +30,24 @@ func (a *FIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
-		return jobs[i].Submitted.Before(jobs[j].Submitted)
+		return jobs[i].SubmitTime.Before(jobs[j].SubmitTime)
 	})
 
-	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(5).InfoS("Started scheduling", "jobs", jobs, "freeGpu", freeGPU, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm)
 
 	// allocate the basic portion
 	for _, job := range jobs {
-		result[job.JobName] = 0
+		result[job.Name] = 0
 		// if could allocate minGPU to the job, allocate it
-		if freeGPU >= job.Config.MinGPU {
-			result[job.JobName] = job.Config.MinGPU
-			freeGPU -= job.Config.MinGPU
+		if freeGPU >= job.Config.MinNumProc {
+			result[job.Name] = job.Config.MinNumProc
+			freeGPU -= job.Config.MinNumProc
 		}
 	}
 
-	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
+	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID,
+		"algorithm", a.algorithm)
 
 	validateResult(a.totalGPU, result, jobs)
 	return result
