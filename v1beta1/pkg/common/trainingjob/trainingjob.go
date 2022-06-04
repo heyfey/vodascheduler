@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	maxNumGpu = 32
+	maxNumGpu    = 32
+	gpuNameLabel = "vodascheduler/accelerator"
 )
 
 type TrainingJob struct {
@@ -123,8 +124,15 @@ func NewTrainingJob(mpijob *kubeflowv1.MPIJob, category string, submitTime time.
 		Epochs:     epochs,
 	}
 
+	// Get GPU type from job spec
+	workerSpec := mpijob.Spec.MPIReplicaSpecs["Worker"]
+	gpuType, ok := workerSpec.Template.Spec.NodeSelector[gpuNameLabel]
+	if !ok {
+		return nil, errors.New("gpu type not specified")
+	}
+
 	// JobInfo would be updated from mongodb by scheduler during resched
-	info := NewBaseJobInfo(mpijob.GetName(), category, "default") // TODO(heyfey)
+	info := NewBaseJobInfo(mpijob.GetName(), category, gpuType)
 
 	t := &TrainingJob{
 		Name:       mpijob.ObjectMeta.GetName(),
@@ -132,7 +140,7 @@ func NewTrainingJob(mpijob *kubeflowv1.MPIJob, category string, submitTime time.
 		User:       "heyfey", // TODO(heyfey)
 		Kind:       types.JobMPIJob,
 		Spec:       mpijob,
-		GpuType:    "default", // TODO(heyfey)
+		GpuType:    gpuType,
 		Priority:   priority,
 		Status:     types.JobWaiting,
 		SubmitTime: submitTime,

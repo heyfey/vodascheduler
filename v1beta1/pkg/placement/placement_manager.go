@@ -21,6 +21,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const gpuNameLabel = "vodascheduler/accelerator"
+
 // Toleration to be added to the launcher pod.
 var launcherToleration = corev1.Toleration{
 	Key:      config.TaintKey,
@@ -51,9 +53,12 @@ type PlacementManager struct {
 	metrics PlacementManagerMetrics
 }
 
-func discoverNodes(kClient *kubeClient.Clientset) (map[nodeName]*nodeState, error) {
+func discoverNodes(kClient *kubeClient.Clientset, gpuType string) (map[nodeName]*nodeState, error) {
 	availableNodes := make(map[nodeName]*nodeState)
-	nodes, err := kClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+
+	labelSelector := gpuNameLabel + "=" + gpuType
+	listOptions := metav1.ListOptions{LabelSelector: labelSelector}
+	nodes, err := kClient.CoreV1().Nodes().List(context.TODO(), listOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -71,14 +76,21 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 	if err != nil {
 		return nil, err
 	}
+
+	// setup pod informer
 	sharedInformers := informers.NewSharedInformerFactoryWithOptions(kClient, 0,
 		informers.WithNamespace(config.Namespace))
 	podListerInformer := sharedInformers.Core().V1().Pods()
 	podInformer := podListerInformer.Informer()
 
-	nodeInformer := informers.NewSharedInformerFactory(kClient, 0).Core().V1().Nodes().Informer()
+	// setup node informer
+	labelOptions := informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+		opts.LabelSelector = gpuNameLabel + "=" + id
+	})
+	factory := informers.NewSharedInformerFactoryWithOptions(kClient, 0, labelOptions)
+	nodeInformer := factory.Core().V1().Nodes().Informer()
 
-	nodes, err := discoverNodes(kClient)
+	nodes, err := discoverNodes(kClient, id)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +276,7 @@ func (pm *PlacementManager) deleteNode(obj interface{}) {
 		}
 	}
 	delete(pm.nodeStates, nodeName(node.GetName()))
+	klog.InfoS("Node deleted", "node", klog.KObj(node), "scheduler", pm.SchedulerID)
 }
 
 func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {

@@ -27,6 +27,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	kubeClient "k8s.io/client-go/kubernetes"
@@ -44,6 +45,7 @@ const (
 	databaseNameJobMetadata     = "job_metadata"
 	collectionNameJobMetadata   = "v1beta1"
 	databaseNameRunningJobs     = "runnings"
+	gpuNameLabel                = "vodascheduler/accelerator"
 )
 
 type Scheduler struct {
@@ -84,8 +86,10 @@ type Scheduler struct {
 	ticker           time.Ticker
 }
 
-func discoverGPUs(kClient *kubeClient.Clientset) (int, error) {
-	nodes, err := kClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+func discoverGPUs(kClient *kubeClient.Clientset, gpuType string) (int, error) {
+	labelSelector := gpuNameLabel + "=" + gpuType
+	listOptions := metav1.ListOptions{LabelSelector: labelSelector}
+	nodes, err := kClient.CoreV1().Nodes().List(context.TODO(), listOptions)
 	if err != nil {
 		return 0, err
 	}
@@ -114,7 +118,7 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		return nil, err
 	}
 
-	totalGpus, err := discoverGPUs(kClient)
+	totalGpus, err := discoverGPUs(kClient, id)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +133,17 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		return nil, err
 	}
 
+	// setup mpijob informer
 	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactoryWithOptions(mpiJobClientSet, 0,
 		kubeflowinformers.WithNamespace(config.Namespace))
 	mpiJobInformer := kubeflowInformerFactory.Kubeflow().V1().MPIJobs().Informer()
 
-	nodeInformer := kubeinformers.NewSharedInformerFactory(kClient, 0).Core().V1().Nodes().Informer()
+	// setup node informer
+	labelOptions := kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+		opts.LabelSelector = gpuNameLabel + "=" + id
+	})
+	factory := kubeinformers.NewSharedInformerFactoryWithOptions(kClient, 0, labelOptions)
+	nodeInformer := factory.Core().V1().Nodes().Informer()
 
 	session := mongo.ConnectMongo()
 
@@ -608,14 +618,14 @@ func (s *Scheduler) addNode(obj interface{}) {
 
 	// Unlike deleteNode and updateNode, addNode has to be declarative
 	var err error
-	s.TotalGpus, err = discoverGPUs(s.kClient)
+	s.TotalGpus, err = discoverGPUs(s.kClient, s.SchedulerID)
 	if err != nil {
 		klog.ErrorS(err, "Failed to add Node", "node", klog.KObj(node)) // TODO(heyfey): error handling
 		return
 	}
 
-	klog.InfoS("Node added", "node", klog.KObj(node), "totalGpus", s.TotalGpus)
 	s.TriggerResched()
+	klog.InfoS("Node added", "node", klog.KObj(node), "totalGpus", s.TotalGpus)
 }
 
 func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
@@ -632,13 +642,12 @@ func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
 	// Informer may deliver an Update event with UID changed if a delete is
 	// immediately followed by a create.
 	if oldNode.UID != newNode.UID {
-		defer klog.InfoS("Node updated", "node", klog.KObj(newNode), "totalGpus", s.TotalGpus)
-
 		s.SchedulerLock.Lock()
 		defer s.SchedulerLock.Unlock()
 
 		s.TotalGpus += (countGPUs(*newNode) - countGPUs(*oldNode))
 		s.TriggerResched()
+		klog.InfoS("Node updated", "node", klog.KObj(newNode), "totalGpus", s.TotalGpus)
 	}
 }
 
@@ -648,13 +657,13 @@ func (s *Scheduler) deleteNode(obj interface{}) {
 		klog.ErrorS(errors.New("unexpected node type"), "Failed to delete Node", "node", klog.KObj(node))
 		return
 	}
-	defer klog.InfoS("Node deleted", "node", klog.KObj(node), "totalGpus", s.TotalGpus)
 
 	s.SchedulerLock.Lock()
 	defer s.SchedulerLock.Unlock()
 
 	s.TotalGpus -= countGPUs(*node)
 	s.TriggerResched()
+	klog.InfoS("Node deleted", "node", klog.KObj(node), "totalGpus", s.TotalGpus)
 }
 
 func (s *Scheduler) Stop() {
@@ -777,11 +786,23 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 		return
 		// TODO(heyfey): retry if mongodb temporary down
 	}
+	// Currently unable to store resource limits fields in mongodb, so mannually
+	// set it after find as a workaround
+	// TODO(heyfey)
+	setGpuResourceLimits(&t)
+
 	s.ReadyJobsMap[jobName] = &t
 	s.JobNumGPU[jobName] = 0
 
 	s.TriggerResched()
 	s.Metrics.JobsCreatedCounter.Inc()
+}
+
+// setGpuResourceLimits sets
+// MPIJob.Spec.MPIReplicaSpecs["Worker"].Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"] to 1
+func setGpuResourceLimits(t *trainingjob.TrainingJob) {
+	q := *resource.NewQuantity(1, resource.DecimalSI)
+	t.Spec.Spec.MPIReplicaSpecs["Worker"].Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"] = q
 }
 
 func (s *Scheduler) DeleteTrainingJob(jobName string) {
@@ -820,13 +841,13 @@ func (s *Scheduler) getAllTrainingJobHandler() http.HandlerFunc {
 
 // GetAllTrainingJob lists all training jobs and their scheduler, status, and waiting/running/total time
 func (s *Scheduler) GetAllTrainingJob() string {
-	result := fmt.Sprintf("%-60s %-10s %-10s %-10s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER", "WAITING", "RUNNING", "TOTAL")
+	result := fmt.Sprintf("%-60s %-10s %-10s %-25s %-10s %-10s %-10s\n", "NAME", "STATUS", "WORKERS", "SCHEDULER", "WAITING", "RUNNING", "TOTAL")
 
 	buffer := make([]string, 0)
 
 	s.SchedulerLock.RLock()
 	for _, job := range s.ReadyJobsMap {
-		str := fmt.Sprintf("%-60s %-10s %-10d %-10s %-10s %-10s %-10s\n",
+		str := fmt.Sprintf("%-60s %-10s %-10d %-25s %-10s %-10s %-10s\n",
 			job.Name, string(job.Status), s.JobNumGPU[job.Name], s.SchedulerID,
 			job.Metrics.WaitingDuration.Round(time.Second),
 			job.Metrics.RunningDuration.Round(time.Second),
@@ -834,7 +855,7 @@ func (s *Scheduler) GetAllTrainingJob() string {
 		buffer = append(buffer, str)
 	}
 	for _, job := range s.DoneJobsMap {
-		str := fmt.Sprintf("%-60s %-10s %-10d %-10s %-10s %-10s %-10s\n",
+		str := fmt.Sprintf("%-60s %-10s %-10d %-25s %-10s %-10s %-10s\n",
 			job.Name, string(job.Status), s.JobNumGPU[job.Name], s.SchedulerID,
 			job.Metrics.WaitingDuration.Round(time.Second),
 			job.Metrics.RunningDuration.Round(time.Second),
