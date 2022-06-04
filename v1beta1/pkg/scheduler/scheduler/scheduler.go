@@ -554,17 +554,7 @@ func (s *Scheduler) handleJobCompleted(jobName string) {
 
 	job.Status = types.JobCompleted
 
-	sess := s.session.Clone()
-	defer sess.Close()
-	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(job)
-	if err != nil {
-		klog.ErrorS(err, "Failed to insert completed job", "job", job.Name)
-		// TODO(heyfey): error handling
-	}
-
-	s.DoneJobsMap[jobName] = job
-	delete(s.ReadyJobsMap, jobName)
-	delete(s.JobNumGPU, jobName)
+	s.handleJobDoneInternal(job)
 
 	s.Metrics.jobsCompletedCounter.Inc()
 	s.TriggerResched()
@@ -586,20 +576,24 @@ func (s *Scheduler) handleJobFailed(jobName string) {
 	}
 	job.Status = types.JobFailed
 
+	s.handleJobDoneInternal(job)
+
+	s.Metrics.jobsFailedCounter.Inc()
+	s.TriggerResched()
+}
+
+func (s *Scheduler) handleJobDoneInternal(job *trainingjob.TrainingJob) {
 	sess := s.session.Clone()
 	defer sess.Close()
 	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(job)
 	if err != nil {
-		klog.ErrorS(err, "Failed to insert failed job", "job", job.Name)
+		klog.ErrorS(err, "Failed to insert job", "job", job.Name, "status", job.Status)
 		// TODO(heyfey): error handling
 	}
 
-	s.DoneJobsMap[jobName] = job
-	delete(s.ReadyJobsMap, jobName)
-	delete(s.JobNumGPU, jobName)
-
-	s.Metrics.jobsFailedCounter.Inc()
-	s.TriggerResched()
+	s.DoneJobsMap[job.Name] = job
+	delete(s.ReadyJobsMap, job.Name)
+	delete(s.JobNumGPU, job.Name)
 }
 
 func (s *Scheduler) addNode(obj interface{}) {
