@@ -74,7 +74,7 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	// 3. Insert meta to db
 	t, err := trainingjob.NewTrainingJob(mpijob, jobCategory, now)
 	if err != nil {
-		klog.InfoS("Failed to create training job", "err", err, "jobName", jobName)
+		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
 		return "", err
 	}
 
@@ -83,7 +83,7 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 
 	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(t)
 	if err != nil {
-		klog.InfoS("Failed to create training job", "err", err, "jobName", jobName)
+		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
 		return "", err
 	}
 
@@ -94,7 +94,7 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 		return "", err
 	}
 
-	klog.InfoS("Created training job", "jobName", jobName)
+	klog.InfoS("Created training job", "job", jobName)
 	return jobName, nil
 }
 
@@ -164,16 +164,16 @@ func (s *Service) DeleteTrainingJob(jobName string) error {
 	err := c.Find(bson.M{"job_name": jobName}).One(&t)
 	if err != nil {
 		if err == mgo.ErrNotFound {
-			klog.InfoS("Attempted to delete a non-existing training job", "err", err, "jobName", jobName)
+			klog.InfoS("Attempted to delete a non-existing training job", "err", err, "job", jobName)
 		} else {
-			klog.InfoS("Failed to delete training job", "err", err, "jobName", jobName)
+			klog.InfoS("Failed to delete training job", "err", err, "job", jobName)
 		}
 		return err
 	}
 
 	err = c.Remove(bson.M{"job_name": jobName})
 	if err != nil {
-		klog.InfoS("Failed to delete training job", "err", err, "jobName", jobName)
+		klog.InfoS("Failed to delete training job", "err", err, "job", jobName)
 		return err
 	}
 
@@ -182,7 +182,7 @@ func (s *Service) DeleteTrainingJob(jobName string) error {
 	msg := rabbitmq.Msg{Verb: rabbitmq.VerbDelete, JobName: jobName}
 	err = rabbitmq.PublishToQueue(s.mqConn, t.GpuType, msg)
 	if err != nil {
-		klog.InfoS("Failed to delete training job", "err", err, "jobName", jobName)
+		klog.InfoS("Failed to delete training job", "err", err, "job", jobName)
 		return err
 	}
 

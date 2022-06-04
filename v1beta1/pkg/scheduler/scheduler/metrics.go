@@ -19,7 +19,7 @@ type SchedulerMetrics struct {
 	GPUInUseGaugeFunc    prometheus.GaugeFunc
 }
 
-func (s *Scheduler) initSchedulerMetrics() SchedulerMetrics {
+func (s *Scheduler) initSchedulerMetrics() {
 	m := SchedulerMetrics{
 		JobsCreatedCounter: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "voda_scheduler_jobs_created_total",
@@ -63,7 +63,7 @@ func (s *Scheduler) initSchedulerMetrics() SchedulerMetrics {
 		),
 	}
 
-	return m
+	s.Metrics = m
 }
 
 // getNumWaitingJobs calculates the number of waiting jobs.

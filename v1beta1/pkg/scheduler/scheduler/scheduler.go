@@ -38,7 +38,6 @@ import (
 
 const (
 	reschedChannelSize          = 100
-	restartChannelSize          = 100
 	rateLimitTimeMetricsSeconds = 5
 	reschedRateLimitSeconds     = 30
 	databaseNameJobInfo         = "job_info"
@@ -49,7 +48,7 @@ const (
 
 type Scheduler struct {
 	SchedulerID    string
-	GPUAvailable   int
+	TotalGpus      int
 	mpiClient      *client.KubeflowV1Client
 	mpiJobInformer cache.SharedIndexInformer
 	kClient        *kubeClient.Clientset
@@ -105,7 +104,7 @@ func countGPUs(node corev1.Node) int {
 
 // NewScheduler creates a new scheduler
 func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
-	c, err := client.NewForConfig(kConfig)
+	mpiClient, err := client.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +114,7 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		return nil, err
 	}
 
-	gpus, err := discoverGPUs(kClient)
+	totalGpus, err := discoverGPUs(kClient)
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +145,8 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 
 	s := &Scheduler{
 		SchedulerID:    id,
-		GPUAvailable:   gpus,
-		mpiClient:      c,
+		TotalGpus:      totalGpus,
+		mpiClient:      mpiClient,
 		mpiJobInformer: mpiJobInformer,
 		kClient:        kClient,
 		nodeInformer:   nodeInformer,
@@ -157,7 +156,7 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		JobNumGPU:     map[string]int{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: algorithm.NewElasticFIFO(gpus, id),
+		Algorithm: algorithm.NewElasticFIFO(totalGpus, id),
 
 		reschedCh:           make(chan time.Time, reschedChannelSize),
 		stopSchedulerCh:     make(chan time.Time),
@@ -173,7 +172,7 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 	}
 
 	s.initRoutes()
-	s.Metrics = s.initSchedulerMetrics()
+	s.initSchedulerMetrics()
 
 	// setup informer callbacks
 	s.mpiJobInformer.AddEventHandler(
@@ -205,10 +204,10 @@ func (s *Scheduler) TriggerResched() {
 }
 
 func (s *Scheduler) Run() {
-	klog.InfoS("Starting scheduler", "scheduler", s.SchedulerID)
-	defer klog.InfoS("Stopping scheduler", "scheduler", s.SchedulerID)
+	klog.InfoS("Starting scheduler")
+	defer klog.InfoS("Stopping scheduler")
 
-	klog.InfoS("Discovered total number of GPUs", "numGpus", s.GPUAvailable, "scheduler", s.SchedulerID)
+	klog.InfoS("Discovered total number of GPUs", "totalGpus", s.TotalGpus)
 
 	// defer close channels ..?
 
@@ -225,7 +224,7 @@ func (s *Scheduler) Run() {
 		s.mpiJobInformer.HasSynced,
 		s.nodeInformer.HasSynced) {
 		err := errors.New("Failed to WaitForCacheSync")
-		klog.ErrorS(err, "Scheduler failed to WaitForCacheSync", "scheduler", s.SchedulerID)
+		klog.ErrorS(err, "Scheduler failed to WaitForCacheSync")
 		klog.Flush()
 		os.Exit(1)
 	}
@@ -235,7 +234,7 @@ func (s *Scheduler) Run() {
 		case r := <-s.reschedCh:
 			if r.After(s.lastResched) {
 				klog.V(4).InfoS("Received rescheduling event, may be blocked because of rate limit",
-					"scheduler", s.SchedulerID, "receivedAtTimestamp", r, "lastReschedulingAtTimestamp", s.lastResched,
+					"receivedAtTimestamp", r, "lastReschedulingAtTimestamp", s.lastResched,
 					"blockedUntilTimestamp", s.reschedBlockedUntil)
 
 				for time.Now().Before(s.reschedBlockedUntil) {
@@ -247,7 +246,7 @@ func (s *Scheduler) Run() {
 			} else {
 				// The rescheduling events with timestamp before s.lastResched are
 				// considered sastified, simply ignore them.
-				klog.V(5).InfoS("Ignored rescheduling event", "scheduler", s.SchedulerID, "receivedAtTimestamp", r)
+				klog.V(5).InfoS("Ignored rescheduling event", "receivedAtTimestamp", r)
 			}
 
 		case _ = <-s.stopSchedulerCh:
@@ -259,8 +258,8 @@ func (s *Scheduler) Run() {
 }
 
 func (s *Scheduler) resched() {
-	klog.V(3).InfoS("Started rescheduling", "scheduler", s.SchedulerID)
-	defer klog.V(3).InfoS("Finished rescheduling", "scheduler", s.SchedulerID)
+	klog.V(3).InfoS("Started rescheduling")
+	defer klog.V(3).InfoS("Finished rescheduling")
 
 	timer := prometheus.NewTimer(s.Metrics.reschedDuration)
 	defer timer.ObserveDuration()
@@ -284,7 +283,7 @@ func (s *Scheduler) resched() {
 		s.PlacementManager.Place(s.JobNumGPU)
 		s.SchedulerLock.RUnlock()
 	} else {
-		klog.V(3).InfoS("Skipped ajust placement because nothing changed", "scheduler", s.SchedulerID)
+		klog.V(3).InfoS("Skipped ajust placement because nothing changed")
 	}
 
 	s.Metrics.reschedCounter.Inc()
@@ -331,7 +330,7 @@ func (s *Scheduler) recordRunningJobsInDB() error {
 	// clear the whole collection
 	_, err := sess.DB(databaseNameRunningJobs).C(s.SchedulerID).RemoveAll(nil)
 	if err != nil {
-		klog.ErrorS(err, "Failed to remove all records in mongo collection", "scheduler", s.SchedulerID,
+		klog.ErrorS(err, "Failed to remove all records in mongo collection",
 			"database", databaseNameJobInfo, "collection", s.SchedulerID)
 		return err
 	}
@@ -341,8 +340,9 @@ func (s *Scheduler) recordRunningJobsInDB() error {
 			entry := mongo.JobRunning{Name: job.Name}
 			err = sess.DB(databaseNameRunningJobs).C(s.SchedulerID).Insert(entry)
 			if err != nil {
-				klog.ErrorS(err, "Failed to insert record to mongo", "scheduler", s.SchedulerID,
-					"database", databaseNameJobInfo, "collection", s.SchedulerID, "entry", entry)
+				klog.ErrorS(err, "Failed to insert record to mongo",
+					"database", databaseNameJobInfo, "collection", s.SchedulerID,
+					"entry", entry)
 				return err
 			}
 		}
@@ -377,7 +377,7 @@ func (s *Scheduler) compareResults(oldResult map[string]int) ([]string, []string
 			if s.JobNumGPU[job] == 0 {
 				status, err := s.getJobStatus(job)
 				if err != nil {
-					klog.ErrorS(err, "Job not exist", "jobName", job)
+					klog.ErrorS(err, "Job not exist", "job", job)
 					continue
 				}
 				// don't delete a completed or failed job
@@ -403,7 +403,7 @@ func (s *Scheduler) compareResults(oldResult map[string]int) ([]string, []string
 // startTrainingJobMany creates MPIJobs of training jobs
 func (s *Scheduler) startTrainingJobMany(jobs ...string) {
 	// Use term "start training job" in logging to distinguish between "create training job"
-	klog.V(4).InfoS("Starting training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
+	klog.V(4).InfoS("Starting training jobs", "jobs", jobs)
 
 	for _, job := range jobs {
 		s.startTrainingJob(job)
@@ -419,13 +419,12 @@ func (s *Scheduler) startTrainingJob(job string) error {
 
 	_, err := s.mpiClient.MPIJobs(config.Namespace).Create(context.TODO(), mpiJob, metav1.CreateOptions{})
 	if err != nil {
-		// TODO(heyfey): SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
-		klog.ErrorS(err, "Failed to start training job, this should not happen", "job", klog.KObj(mpiJob),
-			"scheduler", s.SchedulerID)
+		klog.ErrorS(err, "Failed to start training job, this should not happen", "job", klog.KObj(mpiJob))
+		// TODO(heyfey): error handling
 		// https://github.com/kubeflow/mpi-operator/blob/master/pkg/controllers/v1/mpi_job_controller.go#L875
 	} else {
 		s.ReadyJobsMap[job].Status = types.JobRunning
-		klog.V(5).InfoS("Started training job", "job", klog.KObj(mpiJob), "scheduler", s.SchedulerID)
+		klog.V(5).InfoS("Started training job", "job", klog.KObj(mpiJob))
 
 		// reset time metrics
 		s.ReadyJobsMap[job].Metrics.LastGpuDuration = 0
@@ -447,7 +446,7 @@ func (s *Scheduler) setMPIJobWorkerReplicas(mpiJob *kubeflowv1.MPIJob) {
 
 // scaleTrainingJobMany scales MPIJob of training jobs
 func (s *Scheduler) scaleTrainingJobMany(jobs ...string) {
-	klog.V(4).InfoS("Scaling training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
+	klog.V(4).InfoS("Scaling training jobs", "jobs", jobs)
 
 	for _, job := range jobs {
 		s.scaleTrainingJob(job)
@@ -474,17 +473,16 @@ func (s *Scheduler) scaleTrainingJob(job string) error {
 
 	if err != nil {
 		klog.ErrorS(err, "Failed to scale training job, this should not happen",
-			"job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+			"job", klog.KRef(config.Namespace, job)) // TODO(heyfey): error handling
 	} else {
-		klog.V(5).InfoS("Scaled training job", "job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID)
+		klog.V(5).InfoS("Scaled training job", "job", klog.KRef(config.Namespace, job))
 	}
 	return err
 }
 
 // haltTrainingJobMany deletes MPIJobs of training jobs
 func (s *Scheduler) haltTrainingJobMany(jobs ...string) {
-	// Use term "stop training job" in logging to distinguish between "delete training job" in jobMaster
-	klog.V(4).InfoS("Stopping training jobs", "jobs", jobs, "scheduler", s.SchedulerID)
+	klog.V(4).InfoS("Stopping training jobs", "jobs", jobs)
 
 	for _, job := range jobs {
 		s.haltTrainingJob(job)
@@ -497,10 +495,10 @@ func (s *Scheduler) haltTrainingJob(job string) error {
 	err := s.mpiClient.MPIJobs(config.Namespace).Delete(context.TODO(), job, metav1.DeleteOptions{})
 	if err != nil {
 		klog.ErrorS(err, "Failed to stop training job, this should not happen",
-			"job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID) // TODO: SHOULD NOT HAPPEN, NEED TO REPAIR IF POSSIBLE
+			"job", klog.KRef(config.Namespace, job))
 		// TODO: error handling if not delete
 	} else {
-		klog.V(5).InfoS("Stopped training job", "job", klog.KRef(config.Namespace, job), "scheduler", s.SchedulerID)
+		klog.V(5).InfoS("Stopped training job", "job", klog.KRef(config.Namespace, job))
 
 		s.ReadyJobsMap[job].Status = types.JobWaiting
 		s.ReadyJobsMap[job].Metrics.LastWaitingDuration = 0
@@ -512,11 +510,11 @@ func (s *Scheduler) haltTrainingJob(job string) error {
 func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
 	mpiJob, ok := newObj.(*kubeflowv1.MPIJob)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected MPIJob type"), "Failed to update MPIJob", "MPIJob", klog.KObj(mpiJob),
-			"scheduler", s.SchedulerID)
+		klog.ErrorS(errors.New("unexpected MPIJob type"),
+			"Failed to update MPIJob", "MPIJob", klog.KObj(mpiJob))
 		return
 	}
-	klog.V(5).InfoS("MPIJob updated", "mpijob", klog.KObj(mpiJob), "scheduler", s.SchedulerID)
+	klog.V(5).InfoS("MPIJob updated", "mpijob", klog.KObj(mpiJob))
 
 	if isFinished(mpiJob.Status) {
 		s.SchedulerLock.Lock()
@@ -525,7 +523,7 @@ func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
 		job := mpiJob.GetName()
 		status, err := s.getJobStatus(job)
 		if err != nil {
-			klog.ErrorS(err, "Job not exist", "jobName", job)
+			klog.ErrorS(err, "Job not exist", "job", job)
 			return
 		}
 		if isSucceeded(mpiJob.Status) {
@@ -560,7 +558,7 @@ func (s *Scheduler) handleJobCompleted(jobName string) {
 	defer sess.Close()
 	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(job)
 	if err != nil {
-		klog.ErrorS(err, "Failed to insert completed job", "job", job)
+		klog.ErrorS(err, "Failed to insert completed job", "job", job.Name)
 		// TODO(heyfey): error handling
 	}
 
@@ -592,7 +590,7 @@ func (s *Scheduler) handleJobFailed(jobName string) {
 	defer sess.Close()
 	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(job)
 	if err != nil {
-		klog.ErrorS(err, "Failed to insert failed job", "job", job)
+		klog.ErrorS(err, "Failed to insert failed job", "job", job.Name)
 		// TODO(heyfey): error handling
 	}
 
@@ -607,8 +605,7 @@ func (s *Scheduler) handleJobFailed(jobName string) {
 func (s *Scheduler) addNode(obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to add Node", "node", klog.KObj(node),
-			"scheduler", s.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to add Node", "node", klog.KObj(node))
 		return
 	}
 
@@ -617,39 +614,36 @@ func (s *Scheduler) addNode(obj interface{}) {
 
 	// Unlike deleteNode and updateNode, addNode has to be declarative
 	var err error
-	s.GPUAvailable, err = discoverGPUs(s.kClient)
+	s.TotalGpus, err = discoverGPUs(s.kClient)
 	if err != nil {
-		klog.ErrorS(err, "Failed to add Node", "node", klog.KObj(node), "scheduler", s.SchedulerID) // TODO(heyfey): error handling
+		klog.ErrorS(err, "Failed to add Node", "node", klog.KObj(node)) // TODO(heyfey): error handling
 		return
 	}
 
-	klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", s.GPUAvailable, "scheduler", s.SchedulerID)
+	klog.InfoS("Node added", "node", klog.KObj(node), "totalGpus", s.TotalGpus)
 	s.TriggerResched()
 }
 
 func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
 	oldNode, ok := oldObj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(oldNode),
-			"scheduler", s.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(oldNode))
 		return
 	}
 	newNode, ok := newObj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(newNode),
-			"scheduler", s.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(newNode))
 		return
 	}
 	// Informer may deliver an Update event with UID changed if a delete is
 	// immediately followed by a create.
 	if oldNode.UID != newNode.UID {
-		defer klog.InfoS("Node updated", "node", klog.KObj(newNode), "numGpus", s.GPUAvailable,
-			"scheduler", s.SchedulerID)
+		defer klog.InfoS("Node updated", "node", klog.KObj(newNode), "totalGpus", s.TotalGpus)
 
 		s.SchedulerLock.Lock()
 		defer s.SchedulerLock.Unlock()
 
-		s.GPUAvailable += (countGPUs(*newNode) - countGPUs(*oldNode))
+		s.TotalGpus += (countGPUs(*newNode) - countGPUs(*oldNode))
 		s.TriggerResched()
 	}
 }
@@ -657,16 +651,15 @@ func (s *Scheduler) updateNode(oldObj interface{}, newObj interface{}) {
 func (s *Scheduler) deleteNode(obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to delete Node", "node", klog.KObj(node),
-			"scheduler", s.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to delete Node", "node", klog.KObj(node))
 		return
 	}
-	defer klog.InfoS("Node deleted", "node", klog.KObj(node), "numGpus", s.GPUAvailable, "scheduler", s.SchedulerID)
+	defer klog.InfoS("Node deleted", "node", klog.KObj(node), "totalGpus", s.TotalGpus)
 
 	s.SchedulerLock.Lock()
 	defer s.SchedulerLock.Unlock()
 
-	s.GPUAvailable -= countGPUs(*node)
+	s.TotalGpus -= countGPUs(*node)
 	s.TriggerResched()
 }
 
@@ -690,10 +683,10 @@ func (s *Scheduler) updateTimeMetrics(stopTickerCh chan bool) {
 			priorityChanged := false
 
 			s.SchedulerLock.Lock()
-			for jobName, job := range s.ReadyJobsMap {
+			for _, job := range s.ReadyJobsMap {
 				status := job.Status
 				elasped := time.Since(job.Metrics.LastUpdateTime)
-				numGpu := s.JobNumGPU[jobName]
+				numGpu := s.JobNumGPU[job.Name]
 				if status == types.JobRunning {
 					job.Metrics.RunningDuration += elasped
 					job.Metrics.GpuDuration += elasped * time.Duration(numGpu)
@@ -714,14 +707,14 @@ func (s *Scheduler) updateTimeMetrics(stopTickerCh chan bool) {
 					if job.Metrics.LastGpuDuration.Seconds() > algorithm.TiresiasThresholdsSec[job.Priority] {
 						job.Priority = algorithm.TiresiasDemotePriority(job.Priority)
 						priorityChanged = true
-						klog.V(4).InfoS("Demoted priority to training job", "job", job, "priority", job.Priority)
+						klog.V(4).InfoS("Demoted priority to training job", "job", job.Name, "priority", job.Priority)
 
 						// promote the job if last waiting time longer than STARVELIMIT
 					} else if job.Metrics.LastWaitingDuration >= job.Metrics.LastRunningDuration*time.Duration(algorithm.TiresiasPromoteKnob) &&
 						job.Priority > 0 {
 						job.Priority = algorithm.TiresiasPromotePriority(job.Priority)
 						priorityChanged = true
-						klog.V(4).InfoS("Promoted priority to training job", "job", job, "priority", job.Priority)
+						klog.V(4).InfoS("Promoted priority to training job", "job", job.Name, "priority", job.Priority)
 					}
 				}
 			}
@@ -774,7 +767,7 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 	_, err := s.getJobStatus(jobName)
 	if err == nil {
 		klog.ErrorS(errors.New("Already exist"),
-			"Attempted to create training job that already exist, try using another job name", "jobName", jobName)
+			"Attempted to create training job that already exist, try using another job name", "job", jobName)
 		return
 	}
 
@@ -786,7 +779,7 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).
 		Find(bson.M{"job_name": jobName, "gpu_type": s.SchedulerID}).One(&t)
 	if err != nil {
-		klog.ErrorS(err, "Failed to find training job metadata", "jobName", jobName)
+		klog.ErrorS(err, "Failed to find training job metadata", "job", jobName)
 		return
 		// TODO(heyfey): retry if mongodb temporary down
 	}
@@ -804,7 +797,7 @@ func (s *Scheduler) DeleteTrainingJob(jobName string) {
 	// Check if job already exist
 	status, err := s.getJobStatus(jobName)
 	if err != nil {
-		klog.ErrorS(err, "Attempted to delete a non-exist training job", "jobName", jobName)
+		klog.ErrorS(err, "Attempted to delete a non-exist training job", "job", jobName)
 		return
 	}
 
