@@ -18,19 +18,17 @@ import (
 type AFSL struct {
 	algorithm   string
 	schedulerID string
-	totalGPU    int
 }
 
-func NewAFSL(totalGPU int, id string) *AFSL {
+func NewAFSL(id string) *AFSL {
 	a := &AFSL{
 		algorithm:   "AFS-L",
-		totalGPU:    totalGPU,
 		schedulerID: id,
 	}
 	return a
 }
 
-func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
+func (a *AFSL) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleResult) {
 	result = make(map[string]int)
 	for _, job := range jobs {
 		result[job.Name] = 0
@@ -38,14 +36,14 @@ func (a *AFSL) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
 	// keep the original jobs for later validation
 	oriJobs := make(ReadyJobs, len(jobs))
 	copy(oriJobs, jobs)
-	defer validateResult(a.totalGPU, result, oriJobs)
+	defer validateResult(totalGPU, result, oriJobs)
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
 		return jobs[i].SubmitTime.Before(jobs[j].SubmitTime)
 	})
 
-	freeGPU := a.totalGPU
+	freeGPU := totalGPU
 	for freeGPU > 0 && len(jobs) > 0 {
 		job := a.topPriority(jobs, result)
 		result[job.Name] += 1

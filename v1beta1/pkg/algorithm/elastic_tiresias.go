@@ -24,21 +24,19 @@ var (
 type ElasticTiresias struct {
 	algorithm   string
 	schedulerID string
-	totalGPU    int
 }
 
-func NewElasticTiresias(totalGPU int, id string) *ElasticTiresias {
+func NewElasticTiresias(id string) *ElasticTiresias {
 	a := &ElasticTiresias{
 		algorithm:   "ElasticTiresias",
-		totalGPU:    totalGPU,
 		schedulerID: id,
 	}
 	return a
 }
 
-func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
+func (a *ElasticTiresias) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleResult) {
 	result = make(map[string]int)
-	freeGPU := a.totalGPU
+	freeGPU := totalGPU
 	pendings := len(jobs)
 	// efficiency gain if allocate 1 more GPU to the job
 	gain := make(map[string]float32)
@@ -156,7 +154,7 @@ func (a *ElasticTiresias) Schedule(jobs ReadyJobs) (result types.JobScheduleResu
 	// TODO(heyfey): unable to log TiresiasThresholdsSec correctly
 	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm, "queueNum", TiresiasQueueNum, "thresholds", TiresiasThresholdsSec, "promoteKnob", TiresiasPromoteKnob, "compactionThreshold", ElasticTiresiasCompactionThreshold)
 
-	validateResult(a.totalGPU, result, oriJobs)
+	validateResult(totalGPU, result, oriJobs)
 	return result
 }
 

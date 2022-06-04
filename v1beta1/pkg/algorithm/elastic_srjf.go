@@ -12,22 +12,20 @@ import (
 type ElasticSRJF struct {
 	algorithm   string
 	schedulerID string
-	totalGPU    int
 }
 
-func NewElasticSRJF(totalGPU int, id string) *ElasticSRJF {
+func NewElasticSRJF(id string) *ElasticSRJF {
 	a := &ElasticSRJF{
 		algorithm:   "ElasticSRJF",
-		totalGPU:    totalGPU,
 		schedulerID: id,
 	}
 	return a
 }
 
-func (a *ElasticSRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
+func (a *ElasticSRJF) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleResult) {
 	result = make(map[string]int)
 	sastified := make(map[string]bool)
-	freeGPU := a.totalGPU
+	freeGPU := totalGPU
 
 	// sort the queue by estimated remainning time
 	sort.SliceStable(jobs, func(i, j int) bool {
@@ -69,7 +67,7 @@ func (a *ElasticSRJF) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 	}
 	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
-	validateResult(a.totalGPU, result, jobs)
+	validateResult(totalGPU, result, jobs)
 	return result
 }
 

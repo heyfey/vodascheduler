@@ -156,7 +156,7 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		JobNumGPU:     map[string]int{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: algorithm.NewElasticFIFO(totalGpus, id),
+		Algorithm: algorithm.NewElasticFIFO(id),
 
 		reschedCh:           make(chan time.Time, reschedChannelSize),
 		stopSchedulerCh:     make(chan time.Time),
@@ -269,7 +269,7 @@ func (s *Scheduler) resched() {
 	s.updateAllJobsInfoFromDB()
 
 	timerAlgo := prometheus.NewTimer(s.Metrics.reschedAlgoDuration)
-	s.JobNumGPU = s.Algorithm.Schedule(s.makeReadyJobslist())
+	s.JobNumGPU = s.Algorithm.Schedule(s.makeReadyJobslist(), s.TotalGpus)
 	timerAlgo.ObserveDuration()
 
 	// s.SchedulerLock.Unlock() // may want to unlock here to implement cancelling mechanism

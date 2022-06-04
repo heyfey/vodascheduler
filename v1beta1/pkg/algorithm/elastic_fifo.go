@@ -12,22 +12,20 @@ import (
 type ElasticFIFO struct {
 	algorithm   string
 	schedulerID string
-	totalGPU    int
 }
 
-func NewElasticFIFO(totalGPU int, id string) *ElasticFIFO {
+func NewElasticFIFO(id string) *ElasticFIFO {
 	a := &ElasticFIFO{
 		algorithm:   "ElasticFIFO",
-		totalGPU:    totalGPU,
 		schedulerID: id,
 	}
 	return a
 }
 
-func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
+func (a *ElasticFIFO) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleResult) {
 	result = make(map[string]int)
 	sastified := make(map[string]bool)
-	freeGPU := a.totalGPU
+	freeGPU := totalGPU
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
@@ -72,7 +70,7 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) 
 	}
 	klog.V(4).InfoS("Finished scheduling", "result", result, "freeGpu", freeGPU, "scheduler", a.schedulerID, "algorithm", a.algorithm)
 
-	validateResult(a.totalGPU, result, jobs)
+	validateResult(totalGPU, result, jobs)
 	return result
 }
 

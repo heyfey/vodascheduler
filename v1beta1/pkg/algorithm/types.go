@@ -15,6 +15,6 @@ type ReadyJobs []trainingjob.TrainingJob
 
 // ScheduleAlgorithm is an interface implemented by things that know how to schedule training jobs
 type SchedulerAlgorithm interface {
-	Schedule(ReadyJobs) types.JobScheduleResult
+	Schedule(ReadyJobs, int) types.JobScheduleResult
 	GetName() string
 }

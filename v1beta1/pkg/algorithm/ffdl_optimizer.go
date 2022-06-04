@@ -19,36 +19,34 @@ import (
 type FfDLOptimizer struct {
 	algorithm   string
 	schedulerID string
-	totalGPU    int
 }
 
-func NewFfDLOptimizer(totalGPU int, id string) *FfDLOptimizer {
+func NewFfDLOptimizer(id string) *FfDLOptimizer {
 	a := &FfDLOptimizer{
 		algorithm:   "FfDLOptimizer",
-		totalGPU:    totalGPU,
 		schedulerID: id,
 	}
 	return a
 }
 
-func (a *FfDLOptimizer) Schedule(jobs ReadyJobs) (result types.JobScheduleResult) {
+func (a *FfDLOptimizer) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleResult) {
 	result = make(map[string]int)
 	if len(jobs) == 0 {
-		klog.V(4).InfoS("Finished scheduling", "result", result, "FreeGPU", a.totalGPU, "scheduler", a.schedulerID,
+		klog.V(4).InfoS("Finished scheduling", "result", result, "FreeGPU", totalGPU, "scheduler", a.schedulerID,
 			"algorithm", a.algorithm)
 		return result
 	}
 	for _, job := range jobs {
 		result[job.Name] = 0
 	}
-	defer validateResult(a.totalGPU, result, jobs)
+	defer validateResult(totalGPU, result, jobs)
 
 	// sort the queue by submitted time
 	sort.SliceStable(jobs, func(i, j int) bool {
 		return jobs[i].SubmitTime.Before(jobs[j].SubmitTime)
 	})
 
-	K := a.totalGPU
+	K := totalGPU
 	// thrim the job queue to ensure it is feasible; note that we make index start from 1
 	// We use FIFO policy to trim the job queue, though this part is not
 	// explicitly addressed in the original paper. The benefit of FIFO is it
