@@ -130,12 +130,12 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 }
 
 func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
-	klog.InfoS("Starting placement manager", "scheduler", pm.SchedulerID)
-	defer klog.InfoS("Stopping placement manager", "scheduler", pm.SchedulerID)
+	klog.InfoS("Starting placement manager")
+	defer klog.InfoS("Stopping placement manager")
 
 	for _, n := range pm.nodeStates {
-		klog.InfoS("Discovered node and its GPUs", "scheduler", pm.SchedulerID,
-			"node", klog.KRef("", n.name), "numGpus", n.totalSlots)
+		klog.InfoS("Discovered node and its GPUs", "node", klog.KRef("", n.name),
+			"numGpus", n.totalSlots)
 	}
 	// TODO(heyfey): defer handle crash
 
@@ -144,7 +144,7 @@ func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 		stopCh,
 		pm.podInformer.HasSynced) {
 		err := errors.New("failed to WaitForCacheSync")
-		klog.ErrorS(err, "Placement manager failed to WaitForCacheSync", "scheduler", pm.SchedulerID)
+		klog.ErrorS(err, "Placement manager failed to WaitForCacheSync")
 		klog.Flush()
 		os.Exit(1)
 	}
@@ -156,11 +156,11 @@ func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 func (pm *PlacementManager) addPod(obj interface{}) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected pod type"), "Failed to add pod", "pod", klog.KObj(pod),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected pod type"), "Failed to add pod",
+			"pod", klog.KObj(pod))
 		return
 	}
-	klog.V(5).InfoS("Pod added", "pod", klog.KObj(pod), "scheduler", pm.SchedulerID)
+	klog.V(5).InfoS("Pod added", "pod", klog.KObj(pod))
 
 	if isMPIJobLauncher(pod) && !hasToleration(pod, launcherToleration) {
 		pm.addPodToleration(pod, launcherToleration)
@@ -183,14 +183,14 @@ func (pm *PlacementManager) addPod(obj interface{}) {
 func (pm *PlacementManager) updatePod(oldObj interface{}, newObj interface{}) {
 	oldPod, ok := oldObj.(*corev1.Pod)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod", "pod", klog.KObj(oldPod),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod",
+			"pod", klog.KObj(oldPod))
 		return
 	}
 	newPod, ok := newObj.(*corev1.Pod)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod", "pod", klog.KObj(newPod),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected pod type"), "Failed to update pod",
+			"pod", klog.KObj(newPod))
 		return
 	}
 	// Informer may deliver an Update event with UID changed if a delete is
@@ -203,8 +203,7 @@ func (pm *PlacementManager) updatePod(oldObj interface{}, newObj interface{}) {
 
 // addPodToleration appends the toleration to pod and updates it.
 func (pm *PlacementManager) addPodToleration(pod *corev1.Pod, toleration corev1.Toleration) {
-	klog.V(4).InfoS("Adding toleration to pod", "pod", klog.KObj(pod), "toleration", toleration,
-		"scheduler", pm.SchedulerID)
+	klog.V(4).InfoS("Adding toleration to pod", "pod", klog.KObj(pod), "toleration", toleration)
 
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() (err error) {
 		pod, err := pm.kClient.CoreV1().Pods(config.Namespace).Get(context.TODO(), pod.GetName(), metav1.GetOptions{})
@@ -213,15 +212,15 @@ func (pm *PlacementManager) addPodToleration(pod *corev1.Pod, toleration corev1.
 		return err
 	})
 	if err != nil {
-		klog.ErrorS(err, "Failed to update pod", "pod", klog.KObj(pod), "scheduler", pm.SchedulerID) // TODO: error handling
+		klog.ErrorS(err, "Failed to update pod", "pod", klog.KObj(pod)) // TODO: error handling
 	}
 }
 
 func (pm *PlacementManager) addNode(obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to add Node", "node", klog.KObj(node),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to add Node",
+			"node", klog.KObj(node))
 		return
 	}
 
@@ -231,20 +230,20 @@ func (pm *PlacementManager) addNode(obj interface{}) {
 	numGpus := countGPUs(*node)
 	pm.nodeStates[node.GetName()] = NewNodeState(node.GetName(), numGpus)
 
-	klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", numGpus, "scheduler", pm.SchedulerID)
+	klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", numGpus)
 }
 
 func (pm *PlacementManager) updateNode(oldObj interface{}, newObj interface{}) {
 	oldNode, ok := oldObj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(oldNode),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node",
+			"node", klog.KObj(oldNode))
 		return
 	}
 	newNode, ok := newObj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node", "node", klog.KObj(newNode),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"), "Failed to update node",
+			"node", klog.KObj(newNode))
 		return
 	}
 	// Informer may deliver an Update event with UID changed if a delete is
@@ -258,8 +257,8 @@ func (pm *PlacementManager) updateNode(oldObj interface{}, newObj interface{}) {
 func (pm *PlacementManager) deleteNode(obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(errors.New("unexpected node type"), "Failed to delete Node", "node", klog.KObj(node),
-			"scheduler", pm.SchedulerID)
+		klog.ErrorS(errors.New("unexpected node type"),
+			"Failed to delete Node", "node", klog.KObj(node))
 		return
 	}
 
@@ -276,12 +275,12 @@ func (pm *PlacementManager) deleteNode(obj interface{}) {
 		}
 	}
 	delete(pm.nodeStates, node.GetName())
-	klog.InfoS("Node deleted", "node", klog.KObj(node), "scheduler", pm.SchedulerID)
+	klog.InfoS("Node deleted", "node", klog.KObj(node))
 }
 
 func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
-	klog.InfoS("Started placement adjustment", "scheduler", pm.SchedulerID)
-	defer klog.InfoS("Finished placement adjustment", "scheduler", pm.SchedulerID)
+	klog.InfoS("Started placement adjustment")
+	defer klog.InfoS("Finished placement adjustment")
 
 	pm.placementLock.Lock()
 	timer := prometheus.NewTimer(pm.metrics.placementAlgoDuration)
@@ -311,8 +310,8 @@ func (pm *PlacementManager) Place(jobRequests types.JobScheduleResult) {
 // terminated. Releasing slots should be done in both jobStates and nodeStates
 // becauese they represents the same states only in different perspectives.
 func (pm *PlacementManager) releaseSlots(jobRequests types.JobScheduleResult) {
-	klog.V(4).InfoS("Releasing slots", "jobs", pm.jobStates, "nodes", pm.nodeStates, "scheduler", pm.SchedulerID)
-	defer klog.V(4).InfoS("Released slots", "jobs", pm.jobStates, "nodes", pm.nodeStates, "scheduler", pm.SchedulerID)
+	klog.V(4).InfoS("Releasing slots", "jobs", pm.jobStates, "nodes", pm.nodeStates)
+	defer klog.V(4).InfoS("Released slots", "jobs", pm.jobStates, "nodes", pm.nodeStates)
 
 	for _, job := range pm.jobStates {
 		numWorkers, ok := jobRequests[job.name]
@@ -320,8 +319,7 @@ func (pm *PlacementManager) releaseSlots(jobRequests types.JobScheduleResult) {
 			// The training job wasn't scheduled, which has been terminated,
 			// thus release all slots of the job.
 			for _, nSlots := range job.nodeNumSlotsList {
-				klog.V(5).InfoS("Released slots", "job", job.name, "node", nSlots.node, "slots", nSlots.numSlots,
-					"scheduler", pm.SchedulerID)
+				klog.V(5).InfoS("Released slots", "job", job.name, "node", nSlots.node, "slots", nSlots.numSlots)
 
 				node, ok := pm.nodeStates[nSlots.node]
 				if ok {
@@ -348,8 +346,7 @@ func (pm *PlacementManager) releaseSlots(jobRequests types.JobScheduleResult) {
 
 				if lastNodeNumSlots.numSlots >= toRelease {
 					// the release can be done by release some slots in this node
-					klog.V(5).InfoS("Released slots", "job", job.name, "node", node.name, "slots",
-						toRelease, "scheduler", pm.SchedulerID)
+					klog.V(5).InfoS("Released slots", "job", job.name, "node", node.name, "slots")
 
 					lastNodeNumSlots.numSlots -= toRelease
 					node.freeSlots += toRelease
@@ -360,7 +357,7 @@ func (pm *PlacementManager) releaseSlots(jobRequests types.JobScheduleResult) {
 					// in this node. This case includes lastNodeNumSlots.slots == 0,
 					// which means the node has been deleted.
 					klog.V(5).InfoS("Released slots", "job", job.name, "node", node.name,
-						"slots", lastNodeNumSlots.numSlots, "scheduler", pm.SchedulerID)
+						"slots", lastNodeNumSlots.numSlots)
 
 					toRelease -= lastNodeNumSlots.numSlots
 					lastNodeNumSlots.numSlots = 0
@@ -409,8 +406,7 @@ func (pm *PlacementManager) bestFit(jobRequests types.JobScheduleResult, nodeLis
 	// calculate how many jobs require cross-node communication
 	crossNode := 0
 
-	defer klog.V(4).InfoS("Found best-fit", "nodes", nodeList, "requests", requests, "numJobCrossNode", crossNode,
-		"scheduler", pm.SchedulerID)
+	defer klog.V(4).InfoS("Found best-fit", "nodes", nodeList, "requests", requests, "numJobCrossNode", crossNode)
 
 	// start finding best-fit for each request
 	for _, r := range requests {
@@ -478,7 +474,7 @@ func (pm *PlacementManager) bindNodes(nodeList []*nodeState) {
 	for _, node := range nodeList {
 		scoringMatrix = append(scoringMatrix, pm.scoreCandidates(node, currentNodeList)...)
 	}
-	klog.V(5).InfoS("Scored all nodes", "scoringMatrix", scoringMatrix, "scheduler", pm.SchedulerID)
+	klog.V(5).InfoS("Scored all nodes", "scoringMatrix", scoringMatrix)
 
 	m := munkres.NewMatrix(size)
 	m.A = scoringMatrix
@@ -493,8 +489,8 @@ func (pm *PlacementManager) bindNodes(nodeList []*nodeState) {
 	for _, node := range nodeList {
 		newNodeStates[node.name] = node
 	}
-	klog.V(4).InfoS("Updated node states", "oldStates", pm.nodeStates, "newStates", newNodeStates, "score", totalScore,
-		"scheduler", pm.SchedulerID)
+	klog.V(4).InfoS("Updated node states", "oldStates", pm.nodeStates,
+		"newStates", newNodeStates, "score", totalScore)
 
 	pm.nodeStates = newNodeStates
 }
@@ -538,8 +534,7 @@ func (pm *PlacementManager) updateJobStates() {
 			// TODO: Considering the order in nodeNumSlotsList
 		}
 	}
-	klog.V(4).InfoS("Updated job states", "oldStates", pm.jobStates, "newStates", newJobStates,
-		"scheduler", pm.SchedulerID)
+	klog.V(4).InfoS("Updated job states", "oldStates", pm.jobStates, "newStates", newJobStates)
 
 	pm.jobStates = newJobStates
 }
@@ -561,8 +556,8 @@ func (pm *PlacementManager) updatePodNodeName() []string {
 			for i := 0; i < nSlots.numSlots; i++ {
 				podName := getWorkerPodName(job.name, idx)
 
-				klog.V(5).InfoS("Updating podNodeName table", "pod", klog.KRef(config.Namespace, podName),
-					"nodeName", nSlots.node, "scheduler", pm.SchedulerID)
+				klog.V(5).InfoS("Updating podNodeName table",
+					"pod", klog.KRef(config.Namespace, podName), "nodeName", nSlots.node)
 
 				// determine if the pod need to be deleted
 				oldNode, ok := pm.podNodeName[podName]
@@ -571,8 +566,8 @@ func (pm *PlacementManager) updatePodNodeName() []string {
 					deleted++
 					deletedWorkers++
 
-					klog.V(5).InfoS("Found worker pod need migration", klog.KRef(config.Namespace, podName),
-						"fromNode", oldNode, "toNode", nSlots.node, "scheduler", pm.SchedulerID)
+					klog.V(5).InfoS("Found worker pod need migration",
+						klog.KRef(config.Namespace, podName), "fromNode", oldNode, "toNode", nSlots.node)
 				}
 				newPodNodeName[podName] = nSlots.node
 				idx++
@@ -584,7 +579,7 @@ func (pm *PlacementManager) updatePodNodeName() []string {
 		}
 	}
 	klog.V(4).InfoS("Updated podNodeName table", "oldTable", pm.podNodeName, "newTable", newPodNodeName,
-		"numWorkersToDelete", deletedWorkers, "numLaunchersToDelete", deletedLaunchers, "scheduler", pm.SchedulerID)
+		"numWorkersToDelete", deletedWorkers, "numLaunchersToDelete", deletedLaunchers)
 
 	pm.podNodeName = newPodNodeName
 
@@ -598,11 +593,11 @@ func (pm *PlacementManager) deletePods(podList []string) {
 	for _, podName := range podList {
 		err := pm.kClient.CoreV1().Pods(config.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		if err != nil {
-			klog.ErrorS(err, "Failed to delete pod for migration", klog.KRef(config.Namespace, podName),
-				"scheduler", pm.SchedulerID)
+			klog.ErrorS(err, "Failed to delete pod for migration",
+				"pod", klog.KRef(config.Namespace, podName))
 		} else {
-			klog.V(4).InfoS("Deleted pod that need migration", "pod", klog.KRef(config.Namespace, podName),
-				"scheduler", pm.SchedulerID)
+			klog.V(4).InfoS("Deleted pod that need migration",
+				"pod", klog.KRef(config.Namespace, podName))
 		}
 	}
 }
