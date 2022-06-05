@@ -7,63 +7,57 @@ import (
 
 // request represents a single training job in JobScheduleResult.
 type request struct {
-	job     string
-	workers int
+	job        string
+	numWorkers int
 }
 
-type (
-	nodeName string
-	podName  string
-	// jobName  string
-)
-
-// nodeSlots represents a node and number of slots in the node that was
+// nodeNumSlots represents a node and number of slots in the node that was
 // allocated to a training job.
-type nodeSlots struct {
-	node  nodeName
-	slots int
+type nodeNumSlots struct {
+	node     string
+	numSlots int
 }
 
-// nodeState represents state of a scheduled job.
+// jobState represents state of a scheduled job.
 type jobState struct {
-	name    string
-	workers int
+	name       string
+	numWorkers int
 	// Note that:
-	// 1. The sum of slots must equal to workers.
+	// 1. Sum of all numSlots in nodeNumSlotsList must equal to numWorkers.
 	// 2. The order matters.
-	nodeSlotsList []nodeSlots
+	nodeNumSlotsList []nodeNumSlots
 }
 
 // newJobState creates a new jobState.
 func newJobState(name string) *jobState {
 	j := &jobState{
-		name:          name,
-		workers:       0,
-		nodeSlotsList: []nodeSlots{},
+		name:             name,
+		numWorkers:       0,
+		nodeNumSlotsList: []nodeNumSlots{},
 	}
 	return j
 }
 
 // nodeState represents state of a schedulable node.
 type nodeState struct {
-	name       nodeName
+	name       string
 	totalSlots int
 	freeSlots  int
 	// Jobs that was scheduled to this node and its number of workers on this node.
 	// e.g. {"A": 4, "B": 4}.
-	// Note that sum of workers must <= totalSlots.
-	jobWorkers map[string]int
+	// Note that sum of numWorkers must <= totalSlots.
+	jobNumWorkers map[string]int
 	// Toleration to the node, will be added to pods scheduled to this node.
 	toleration corev1.Toleration
 }
 
 // NewNodeState creates a new nodeState.
-func NewNodeState(name nodeName, slots int) *nodeState {
+func NewNodeState(name string, slots int) *nodeState {
 	n := &nodeState{
-		name:       name,
-		totalSlots: slots,
-		freeSlots:  slots,
-		jobWorkers: make(map[string]int),
+		name:          name,
+		totalSlots:    slots,
+		freeSlots:     slots,
+		jobNumWorkers: make(map[string]int),
 	}
 	n.setToleration()
 	return n
@@ -74,14 +68,14 @@ func (n *nodeState) setToleration() {
 	toleration := corev1.Toleration{
 		Key:      config.TaintKey,
 		Operator: corev1.TolerationOpEqual,
-		Value:    string(n.name),
+		Value:    n.name,
 		Effect:   corev1.TaintEffectNoExecute,
 	}
 	n.toleration = toleration
 }
 
 // rename updates the name of a schedulableNode.
-func (n *nodeState) rename(name nodeName) {
+func (n *nodeState) rename(name string) {
 	n.name = name
 	n.setToleration()
 }
