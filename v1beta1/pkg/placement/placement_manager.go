@@ -106,7 +106,7 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 		nodeInformer:  nodeInformer,
 		StopCh:        make(chan struct{}),
 	}
-	pm.metrics = pm.initPlacementManagerMetrics()
+	pm.initPlacementManagerMetrics()
 
 	// setup informer callbacks
 	pm.podInformer.AddEventHandler(

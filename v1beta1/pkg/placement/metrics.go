@@ -9,7 +9,7 @@ type PlacementManagerMetrics struct {
 	placementAlgoDuration prometheus.Summary
 }
 
-func (pm *PlacementManager) initPlacementManagerMetrics() PlacementManagerMetrics {
+func (pm *PlacementManager) initPlacementManagerMetrics() {
 	m := PlacementManagerMetrics{
 		placementAlgoDuration: promauto.NewSummary(prometheus.SummaryOpts{
 			Name: "voda_scheduler_placement_algorithm_duration_seconds",
@@ -17,5 +17,5 @@ func (pm *PlacementManager) initPlacementManagerMetrics() PlacementManagerMetric
 		}),
 	}
 
-	return m
+	pm.metrics = m
 }
