@@ -140,9 +140,11 @@ func (pm *PlacementManager) Run(stopCh <-chan struct{}) {
 	// TODO(heyfey): defer handle crash
 
 	go pm.podInformer.Run(stopCh)
+	go pm.nodeInformer.Run(stopCh)
 	if !cache.WaitForCacheSync(
 		stopCh,
-		pm.podInformer.HasSynced) {
+		pm.podInformer.HasSynced,
+		pm.nodeInformer.HasSynced) {
 		err := errors.New("failed to WaitForCacheSync")
 		klog.ErrorS(err, "Placement manager failed to WaitForCacheSync")
 		klog.Flush()
