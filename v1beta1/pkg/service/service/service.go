@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+
 	"github.com/gorilla/mux"
 	"github.com/heyfey/vodascheduler/config"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
@@ -24,6 +26,11 @@ func NewService() *Service {
 	}
 	s.initRoutes()
 	return s
+}
+
+func (s *Service) Shutdown(tc context.Context) {
+	s.session.Close()
+	s.mqConn.Close()
 }
 
 func (s *Service) initRoutes() {
