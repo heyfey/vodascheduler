@@ -107,7 +107,7 @@ func countGPUs(node corev1.Node) int {
 }
 
 // NewScheduler creates a new scheduler
-func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
+func NewScheduler(id string, kConfig *rest.Config, resume bool) (*Scheduler, error) {
 	mpiClient, err := client.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		return nil, err
 	}
 
-	pm, err := placement.NewPlacementManager(id, kConfig)
+	pm, err := placement.NewPlacementManager(id, kConfig, resume)
 	if err != nil {
 		return nil, err
 	}
@@ -133,16 +133,23 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 		return nil, err
 	}
 
+	labelString := gpuNameLabel + "=" + id
 	// setup mpijob informer
-	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactoryWithOptions(mpiJobClientSet, 0,
-		kubeflowinformers.WithNamespace(config.Namespace))
+	mpijobLabelOptions := kubeflowinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+		opts.LabelSelector = labelString
+	})
+	kubeflowInformerFactory := kubeflowinformers.NewSharedInformerFactoryWithOptions(
+		mpiJobClientSet,
+		0,
+		kubeflowinformers.WithNamespace(config.Namespace),
+		mpijobLabelOptions)
 	mpiJobInformer := kubeflowInformerFactory.Kubeflow().V1().MPIJobs().Informer()
 
 	// setup node informer
-	labelOptions := kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-		opts.LabelSelector = gpuNameLabel + "=" + id
+	nodeLabelOptions := kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+		opts.LabelSelector = labelString
 	})
-	factory := kubeinformers.NewSharedInformerFactoryWithOptions(kClient, 0, labelOptions)
+	factory := kubeinformers.NewSharedInformerFactoryWithOptions(kClient, 0, nodeLabelOptions)
 	nodeInformer := factory.Core().V1().Nodes().Informer()
 
 	session := mongo.ConnectMongo()
@@ -198,6 +205,13 @@ func NewScheduler(id string, kConfig *rest.Config) (*Scheduler, error) {
 			DeleteFunc: s.deleteNode,
 		},
 	)
+
+	if resume {
+		// The call to constructStatusOnRestart doesn't acquire lock, hence
+		// should make sure it is called only when initiating the scheduler
+		s.constructStatusOnRestart()
+		s.TriggerResched()
+	}
 
 	go s.Run()
 
@@ -422,7 +436,7 @@ func (s *Scheduler) startTrainingJobMany(jobs ...string) {
 
 // startTrainingJob creates MPIJob of a training job, with the number of
 // worker replicas equal to the number of GPU assigned.
-// Should aquire lock before calling it.
+// Should acquire lock before calling it.
 func (s *Scheduler) startTrainingJob(job string) error {
 	mpiJob := s.ReadyJobsMap[job].Spec
 	s.setMPIJobWorkerReplicas(mpiJob)
@@ -521,7 +535,7 @@ func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
 	mpiJob, ok := newObj.(*kubeflowv1.MPIJob)
 	if !ok {
 		klog.ErrorS(errors.New("unexpected MPIJob type"),
-			"Failed to update MPIJob", "MPIJob", klog.KObj(mpiJob))
+			"Failed to update MPIJob", "mpijob", klog.KObj(mpiJob))
 		return
 	}
 	klog.V(5).InfoS("MPIJob updated", "mpijob", klog.KObj(mpiJob))
@@ -530,27 +544,33 @@ func (s *Scheduler) updateMPIJob(oldObj interface{}, newObj interface{}) {
 		s.SchedulerLock.Lock()
 		defer s.SchedulerLock.Unlock()
 
-		job := mpiJob.GetName()
-		status, err := s.getJobStatus(job)
-		if err != nil {
-			klog.ErrorS(err, "Job not exist", "job", job)
-			return
+		s.handleMPIJobFinished(mpiJob)
+	}
+}
+
+// handleMPIJobFinished handles job finished.
+// Should acquire lock before calling it.
+func (s *Scheduler) handleMPIJobFinished(mpiJob *kubeflowv1.MPIJob) {
+	job := mpiJob.GetName()
+	status, err := s.getJobStatus(job)
+	if err != nil {
+		klog.ErrorS(err, "Finished job not exist", "job", job)
+		return
+	}
+	if isSucceeded(mpiJob.Status) {
+		if status != types.JobCompleted { // is the first succeeded event
+			s.handleJobCompleted(job)
 		}
-		if isSucceeded(mpiJob.Status) {
-			if status != types.JobCompleted { // is the first succeeded event
-				s.handleJobCompleted(job)
-			}
-		} else if isFailed(mpiJob.Status) {
-			if status != types.JobFailed { // is the first failed event
-				s.handleJobFailed(job)
-			}
+	} else if isFailed(mpiJob.Status) {
+		if status != types.JobFailed { // is the first failed event
+			s.handleJobFailed(job)
 		}
 	}
 }
 
-// handleJobCompleted makes essential updates and sends resched signal
-// It should only be called by updateMPIJob, and should acquire lock before
-// calling it.
+// handleJobCompleted makes essential updates and sends rescheduling signal.
+// It should only be called by handleMPIJobFinished, and should acquire lock
+// before calling it.
 func (s *Scheduler) handleJobCompleted(jobName string) {
 	job, ok := s.ReadyJobsMap[jobName]
 	if !ok {
@@ -575,8 +595,8 @@ func (s *Scheduler) handleJobCompleted(jobName string) {
 // a event with JobFailed phase even when the job fails, thus this function
 // won't be called in this situation.
 // (Do not use ExitCode since there are hanging issue when job fails)
-// It should only be called by updateMPIJob, and should acquire lock before
-// calling it.
+// It should only be called by handleMPIJobFinished, and should acquire lock
+// before calling it.
 func (s *Scheduler) handleJobFailed(jobName string) {
 	klog.InfoS("Training job failed", "job", jobName)
 
@@ -595,9 +615,11 @@ func (s *Scheduler) handleJobFailed(jobName string) {
 func (s *Scheduler) handleJobDoneInternal(job *trainingjob.TrainingJob) {
 	sess := s.session.Clone()
 	defer sess.Close()
-	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(job)
+	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).
+		Update(bson.M{"job_name": job.Name, "gpu_type": s.SchedulerID}, job)
 	if err != nil {
-		klog.ErrorS(err, "Failed to insert job", "job", job.Name, "status", job.Status)
+		klog.ErrorS(err, "Failed to update job record in mongodb",
+			"job", job.Name, "status", job.Status)
 		// TODO(heyfey): error handling
 	}
 
@@ -778,9 +800,9 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 	sess := s.session.Clone()
 	defer sess.Close()
 
-	t := trainingjob.TrainingJob{}
+	t := &trainingjob.TrainingJob{}
 	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).
-		Find(bson.M{"job_name": jobName, "gpu_type": s.SchedulerID}).One(&t)
+		Find(bson.M{"job_name": jobName, "gpu_type": s.SchedulerID}).One(t)
 	if err != nil {
 		klog.ErrorS(err, "Failed to find training job metadata", "job", jobName)
 		return
@@ -789,9 +811,13 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 	// Currently unable to store resource limits fields in mongodb, so mannually
 	// set it after find as a workaround
 	// TODO(heyfey)
-	setGpuResourceLimits(&t)
+	setGpuResourceLimits(t)
 
-	s.ReadyJobsMap[jobName] = &t
+	// insert gpuNameLabel
+	insertLabel(t)
+
+	t.Status = types.JobWaiting
+	s.ReadyJobsMap[jobName] = t
 	s.JobNumGPU[jobName] = 0
 
 	s.TriggerResched()
@@ -803,6 +829,14 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 func setGpuResourceLimits(t *trainingjob.TrainingJob) {
 	q := *resource.NewQuantity(1, resource.DecimalSI)
 	t.Spec.Spec.MPIReplicaSpecs["Worker"].Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"] = q
+}
+
+// insertLabel insert gpuNameLabel to training job's mpijob and its launcher
+// and worker pod.
+func insertLabel(t *trainingjob.TrainingJob) {
+	t.Spec.Labels[gpuNameLabel] = t.GpuType
+	t.Spec.Spec.MPIReplicaSpecs["Launcher"].Template.Labels[gpuNameLabel] = t.GpuType
+	t.Spec.Spec.MPIReplicaSpecs["Worker"].Template.Labels[gpuNameLabel] = t.GpuType
 }
 
 func (s *Scheduler) DeleteTrainingJob(jobName string) {
@@ -870,4 +904,77 @@ func (s *Scheduler) GetAllTrainingJob() string {
 	}
 
 	return result
+}
+
+// constructStatusOnRestart is used to re-construct scheduler status when
+// re-starting on failure for fault tolerance.
+//    1. Find all jobs metadata that are managed by this scheduler in mongodb to
+//       reconstruct Ready/DoneJobsMap
+//    2. Find existing jobs that are menaged by this scheduler in k8s cluster to
+//       re-construct JobNumGPU, also handle job finished if needed
+// Potential concern: If any existing mpijob status changes after
+// constructStatusOnRestart() and before mpijob informer start running, the
+// scheduler may not catch the event. TODO(heyfey): verify the concern
+func (s *Scheduler) constructStatusOnRestart() {
+	klog.V(4).InfoS("Re-constructing scheduler status")
+	defer klog.V(4).InfoS("Re-constructed scheduler status")
+
+	// 1. find running/waiting/completed/failed jobs in mongodb to reconstruct Ready/DoneJobsMap
+	sess := s.session.Clone()
+	defer sess.Close()
+
+	jobs := []trainingjob.TrainingJob{}
+	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Find(bson.M{"gpu_type": s.SchedulerID}).All(&jobs)
+	if err != nil {
+		klog.ErrorS(err, "Failed to find training job metadata")
+		klog.Flush()
+		os.Exit(1)
+	}
+	for _, j := range jobs {
+		job := j // make a copy of j so job has its own unique address
+		klog.V(5).InfoS("Found job metadata in mongodb", "job", job.Name,
+			"status", job.Status, "kind", job.Kind, "gpu", job.GpuType)
+
+		if job.Status == types.JobSubmitted {
+			continue
+		} else if job.Status == types.JobRunning || job.Status == types.JobWaiting {
+			s.ReadyJobsMap[job.Name] = &job
+		} else if job.Status == types.JobCompleted || job.Status == types.JobFailed || job.Status == types.JobCanceled {
+			s.DoneJobsMap[job.Name] = &job
+		} else {
+			klog.Flush()
+			panic("unrecognized job status")
+		}
+	}
+
+	// 2. find existing mpijobs in k8s cluster to re-construct JobNumGPU, also handle job finished if needed
+	labelSelector := gpuNameLabel + "=" + s.SchedulerID
+	listOptions := metav1.ListOptions{LabelSelector: labelSelector}
+	mpiJobs, err := s.mpiClient.MPIJobs(config.Namespace).List(context.TODO(), listOptions)
+	if err != nil {
+		klog.ErrorS(err, "Failed to list mpijob")
+		klog.Flush()
+		os.Exit(1)
+	}
+	for _, mpiJob := range mpiJobs.Items {
+		job := mpiJob.GetName()
+		_, ok := s.ReadyJobsMap[job]
+		if isFinished(mpiJob.Status) {
+			// job status is running or waiting in mongodb, but the job is actually completed or failed
+			if ok {
+				s.handleMPIJobFinished(&mpiJob)
+			}
+		} else {
+			// the job is actually running, job status should be running or waiting in mongodb
+			if !ok {
+				klog.ErrorS(errors.New("not found"), "Failed to find running job in ReadyJobsMap", "job", job)
+				continue
+			}
+			s.ReadyJobsMap[job].Status = types.JobRunning
+			s.JobNumGPU[job] = int(*mpiJob.Spec.MPIReplicaSpecs["Worker"].Replicas)
+		}
+	}
+
+	klog.V(4).InfoS("Re-constructed scheduler status", "readyJobs", &s.ReadyJobsMap,
+		"doneJobs", &s.DoneJobsMap, "jobNumGPU", s.JobNumGPU)
 }

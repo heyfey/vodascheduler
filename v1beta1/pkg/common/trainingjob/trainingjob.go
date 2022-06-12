@@ -142,7 +142,7 @@ func NewTrainingJob(mpijob *kubeflowv1.MPIJob, category string, submitTime time.
 		Spec:       mpijob,
 		GpuType:    gpuType,
 		Priority:   priority,
-		Status:     types.JobWaiting,
+		Status:     types.JobSubmitted,
 		SubmitTime: submitTime,
 		FinishTime: types.MaxTime,
 		Config:     config,

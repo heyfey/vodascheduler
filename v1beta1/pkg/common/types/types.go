@@ -31,8 +31,12 @@ const (
 type JobStatusType string
 
 const (
-	// JobWaiting means the job has been accepted by the system, but not being
-	// allocated any GPU now.
+	// JobSubmitted means the job has been accepted by the training service, but
+	// not accepted by any scheduler yet.
+	JobSubmitted JobStatusType = "Submitted"
+
+	// JobWaiting means the job has been accepted by the scheduler, but not
+	// being allocated any GPU now.
 	JobWaiting JobStatusType = "Waiting"
 
 	// JobRunning means the training job is allocated with at least one GPU.

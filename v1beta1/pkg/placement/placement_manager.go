@@ -21,7 +21,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const gpuNameLabel = "vodascheduler/accelerator"
+const (
+	gpuNameLabel    = "vodascheduler/accelerator"
+	labelMPIJobName = "mpi-job-name"
+)
 
 // Toleration to be added to the launcher pod.
 var launcherToleration = corev1.Toleration{
@@ -71,23 +74,29 @@ func discoverNodes(kClient *kubeClient.Clientset, gpuType string) (map[string]*n
 }
 
 // NewPlacementManager creates a new placement manager.
-func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, error) {
+func NewPlacementManager(id string, kConfig *rest.Config, resume bool) (*PlacementManager, error) {
 	kClient, err := kubeClient.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
 	}
 
+	labelString := gpuNameLabel + "=" + id
 	// setup pod informer
-	sharedInformers := informers.NewSharedInformerFactoryWithOptions(kClient, 0,
-		informers.WithNamespace(config.Namespace))
-	podListerInformer := sharedInformers.Core().V1().Pods()
-	podInformer := podListerInformer.Informer()
+	podLabelOptions := informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+		opts.LabelSelector = labelString
+	})
+	sharedInformers := informers.NewSharedInformerFactoryWithOptions(
+		kClient,
+		0,
+		informers.WithNamespace(config.Namespace),
+		podLabelOptions)
+	podInformer := sharedInformers.Core().V1().Pods().Informer()
 
 	// setup node informer
-	labelOptions := informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-		opts.LabelSelector = gpuNameLabel + "=" + id
+	nodeLabelOptions := informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+		opts.LabelSelector = labelString
 	})
-	factory := informers.NewSharedInformerFactoryWithOptions(kClient, 0, labelOptions)
+	factory := informers.NewSharedInformerFactoryWithOptions(kClient, 0, nodeLabelOptions)
 	nodeInformer := factory.Core().V1().Nodes().Informer()
 
 	nodes, err := discoverNodes(kClient, id)
@@ -123,6 +132,13 @@ func NewPlacementManager(id string, kConfig *rest.Config) (*PlacementManager, er
 			DeleteFunc: pm.deleteNode,
 		},
 	)
+
+	if resume {
+		// The call to constructStatusOnRestart doesn't acquire lock, hence
+		// should make sure it is called only when initiating the placement
+		// manager
+		pm.constructStatusOnRestart()
+	}
 
 	go pm.Run(pm.StopCh)
 
@@ -168,6 +184,8 @@ func (pm *PlacementManager) addPod(obj interface{}) {
 		pm.addPodToleration(pod, launcherToleration)
 	} else if isMPIJobWorker(pod) {
 		pm.placementLock.RLock()
+		defer pm.placementLock.RUnlock()
+
 		nodeName, ok := pm.podNodeName[pod.GetName()]
 		if ok {
 			t := pm.nodeStates[nodeName].toleration
@@ -175,10 +193,10 @@ func (pm *PlacementManager) addPod(obj interface{}) {
 				pm.addPodToleration(pod, t)
 			}
 		} else {
-			klog.Flush()
-			panic(errors.New("could not find pod in podNodeName table"))
+			klog.ErrorS(errors.New("pod not found in podNodeName table"),
+				"Failed to add pod", "pod", klog.KObj(pod))
+			return
 		}
-		pm.placementLock.RUnlock()
 	}
 }
 
@@ -229,10 +247,15 @@ func (pm *PlacementManager) addNode(obj interface{}) {
 	pm.placementLock.Lock()
 	defer pm.placementLock.Unlock()
 
-	numGpus := countGPUs(*node)
-	pm.nodeStates[node.GetName()] = NewNodeState(node.GetName(), numGpus)
+	_, ok = pm.nodeStates[node.GetName()]
+	if !ok {
+		numGpus := countGPUs(*node)
+		pm.nodeStates[node.GetName()] = NewNodeState(node.GetName(), numGpus)
 
-	klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", numGpus)
+		klog.InfoS("Node added", "node", klog.KObj(node), "numGpus", numGpus)
+	} else {
+		klog.InfoS("Added node already exist, ignored it", "node", klog.KObj(node))
+	}
 }
 
 func (pm *PlacementManager) updateNode(oldObj interface{}, newObj interface{}) {
@@ -602,4 +625,51 @@ func (pm *PlacementManager) deletePods(podList []string) {
 				"pod", klog.KRef(config.Namespace, podName))
 		}
 	}
+}
+
+// constructStatusOnRestart is used to re-construct scheduler status when
+// re-starting on failure for fault tolerance.
+//    1. Find running pods that are managed by this placement manager with k8s
+//       api to re-construct podNodeName table and node states
+//    2. Update job states base on node states
+func (pm *PlacementManager) constructStatusOnRestart() {
+	klog.V(4).InfoS("Re-constructing placement manager status")
+	defer klog.V(4).InfoS("Re-constructed placement manager status")
+
+	// 1. find running pods with k8s api to re-construct podNodeName. Also
+	//    re-construct nodeStates at the same time
+	labelSelector := gpuNameLabel + "=" + pm.SchedulerID
+	listOptions := metav1.ListOptions{LabelSelector: labelSelector}
+	pods, err := pm.kClient.CoreV1().Pods(config.Namespace).List(context.TODO(), listOptions)
+	if err != nil {
+		klog.ErrorS(err, "Failed to list pods")
+		klog.Flush()
+		os.Exit(1)
+	}
+	for _, pod := range pods.Items {
+		// find node of this pod from its tolerations
+		if isMPIJobWorker(&pod) {
+			for _, toleration := range pod.Spec.Tolerations {
+				if toleration.Key == config.TaintKey {
+					node := toleration.Value
+					pm.podNodeName[pod.GetName()] = node
+
+					// update node state
+					job := pod.Labels[labelMPIJobName]
+					pm.nodeStates[node].freeSlots -= 1
+					pm.nodeStates[node].jobNumWorkers[job] += 1
+					break
+				}
+				// all worker pods should has a toleration
+				klog.ErrorS(errors.New("missing toleration"),
+					"Missing toleration in worker pod", "pod", klog.KObj(&pod))
+			}
+		}
+	}
+	klog.V(4).InfoS("Re-constructed podNodeName table and node states",
+		"table", pm.podNodeName, "nodes", pm.nodeStates)
+
+	// 2. re-construct jobStates using the re-constructed nodeStates
+	pm.updateJobStates()
+	klog.V(4).InfoS("Re-constructed job states")
 }
