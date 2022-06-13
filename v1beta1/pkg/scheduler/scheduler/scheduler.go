@@ -618,7 +618,7 @@ func (s *Scheduler) handleJobDoneInternal(job *trainingjob.TrainingJob) {
 	err := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).
 		Update(bson.M{"job_name": job.Name, "gpu_type": s.SchedulerID}, job)
 	if err != nil {
-		klog.ErrorS(err, "Failed to update job record in mongodb",
+		klog.ErrorS(err, "Failed to update training job in mongodb",
 			"job", job.Name, "status", job.Status)
 		// TODO(heyfey): error handling
 	}
@@ -808,6 +808,27 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 		return
 		// TODO(heyfey): retry if mongodb temporary down
 	}
+
+	s.preprocessTrainingJob(t)
+	t.Status = types.JobWaiting
+
+	// update job status in db
+	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).
+		Update(bson.M{"job_name": jobName, "gpu_type": s.SchedulerID}, t)
+	if err != nil {
+		klog.ErrorS(err, "Failed to update training job in mongodb",
+			"job", t.Name, "status", t.Status)
+		// TODO(heyfey): error handling
+	}
+
+	s.ReadyJobsMap[t.Name] = t
+	s.JobNumGPU[t.Name] = 0
+
+	s.TriggerResched()
+	s.Metrics.JobsCreatedCounter.Inc()
+}
+
+func (s *Scheduler) preprocessTrainingJob(t *trainingjob.TrainingJob) {
 	// Currently unable to store resource limits fields in mongodb, so mannually
 	// set it after find as a workaround
 	// TODO(heyfey)
@@ -815,13 +836,6 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 
 	// insert gpuNameLabel
 	insertLabel(t)
-
-	t.Status = types.JobWaiting
-	s.ReadyJobsMap[jobName] = t
-	s.JobNumGPU[jobName] = 0
-
-	s.TriggerResched()
-	s.Metrics.JobsCreatedCounter.Inc()
 }
 
 // setGpuResourceLimits sets
@@ -938,6 +952,7 @@ func (s *Scheduler) constructStatusOnRestart() {
 		if job.Status == types.JobSubmitted {
 			continue
 		} else if job.Status == types.JobRunning || job.Status == types.JobWaiting {
+			s.preprocessTrainingJob(&job)
 			s.ReadyJobsMap[job.Name] = &job
 		} else if job.Status == types.JobCompleted || job.Status == types.JobFailed || job.Status == types.JobCanceled {
 			s.DoneJobsMap[job.Name] = &job
