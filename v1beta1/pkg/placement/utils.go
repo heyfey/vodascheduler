@@ -3,6 +3,7 @@ package placement
 import (
 	"fmt"
 
+	kubeflowcommonv1 "github.com/kubeflow/common/pkg/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -25,11 +26,17 @@ func getWorkerPodName(name string, idx int) string {
 }
 
 func isMPIJobLauncher(pod *corev1.Pod) bool {
-	return pod.GetLabels()[labelMPIRoleType] == launcher
+	labels := pod.GetLabels()
+	return labels[labelMPIRoleType] == launcher ||
+		labels[kubeflowcommonv1.ReplicaTypeLabel] == launcher ||
+		labels[kubeflowcommonv1.ReplicaTypeLabelDeprecated] == launcher
 }
 
 func isMPIJobWorker(pod *corev1.Pod) bool {
-	return pod.GetLabels()[labelMPIRoleType] == worker
+	labels := pod.GetLabels()
+	return labels[labelMPIRoleType] == worker ||
+		labels[kubeflowcommonv1.ReplicaTypeLabel] == worker ||
+		labels[kubeflowcommonv1.ReplicaTypeLabelDeprecated] == worker
 }
 
 func hasToleration(pod *corev1.Pod, toleration corev1.Toleration) bool {
