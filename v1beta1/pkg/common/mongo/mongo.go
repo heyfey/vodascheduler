@@ -2,16 +2,21 @@ package mongo
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 
+	"github.com/heyfey/vodascheduler/pkg/common/util"
 	"gopkg.in/mgo.v2"
 	"k8s.io/klog/v2"
 )
 
 const (
 	maxNumGpu = 32
+
+	service   = "mongodb-svc"
+	namespace = "voda-scheduler"
+	portName  = "voda-mongodb"
+	protocal  = "tcp"
 )
 
 type TrainingJobInfo struct {
@@ -37,30 +42,20 @@ type JobRunning struct {
 // TODO(heyfey): or an error if the connection attempt fails.
 // TODO(heyfey): May require username and password in the future
 func ConnectMongo() *mgo.Session {
-
-	// Find service IP and port from kube-dns (CoreDNS)
-	// my-svc.my-namespace.svc.cluster-domain.example
-	host := "mongodb-svc.voda-scheduler.svc.cluster.local"
-	iprecords, err := net.LookupIP("mongodb-svc.voda-scheduler.svc.cluster.local")
+	ip, err := util.GetInClusterServiceIP(service, namespace)
 	if err != nil {
-		klog.ErrorS(err, "Failed to look up mongodb service host IP", "host", host)
+		klog.ErrorS(err, "Failed to look up mongodb service IP", "service", service, "namespace", namespace)
 		klog.Flush()
 		os.Exit(1)
 	}
-	ip := iprecords[0]
 
-	// _my-port-name._my-port-protocol.my-svc.my-namespace.svc.cluster-domain.example
-	portName := "voda-mongodb"
-	protocal := "tcp"
-	domainName := "mongodb-svc.voda-scheduler.svc.cluster.local"
-	_, addrs, err := net.LookupSRV(portName, protocal, domainName)
+	port, err := util.GetInClusterServicePort(service, namespace, protocal, portName)
 	if err != nil {
-		klog.ErrorS(err, "Failed to look up mongodb service port", "portName", portName, "protocal", protocal,
-			"domainName", domainName)
+		klog.ErrorS(err, "Failed to look up mongodb service port", "service", service, "namespace", namespace,
+			"portName", portName, "protocal", protocal)
 		klog.Flush()
 		os.Exit(1)
 	}
-	port := addrs[0].Port
 
 	url := ip.String() + ":" + fmt.Sprint(port)
 	session, err := mgo.Dial(url)
