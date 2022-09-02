@@ -27,7 +27,7 @@ type TrainingJob struct {
 	FinishTime time.Time           `bson:"finish_timestamp" json:"finish_timestamp"`
 	Config     JobConfig           `bson:"config" json:"config"`
 	Metrics    *JobMetrics         `bson:"time_metrics" json:"time_metrics"`
-	Info       JobInfo             `bson:"info" json:"info"`
+	Info       *JobInfo            `bson:"info,omitempty" json:"info,omitempty"`
 }
 
 // JobConfig represents user training configurations specified by user
@@ -131,9 +131,6 @@ func NewTrainingJob(mpijob *kubeflowv1.MPIJob, category string, submitTime time.
 		return nil, errors.New("gpu type not specified")
 	}
 
-	// JobInfo would be updated from mongodb by scheduler during resched
-	info := NewBaseJobInfo(mpijob.GetName(), category, gpuType)
-
 	t := &TrainingJob{
 		Name:       mpijob.ObjectMeta.GetName(),
 		Category:   category,
@@ -147,7 +144,7 @@ func NewTrainingJob(mpijob *kubeflowv1.MPIJob, category string, submitTime time.
 		FinishTime: types.MaxTime,
 		Config:     config,
 		Metrics:    NewJobMetrics(),
-		Info:       info,
+		Info:       nil, // Info is meant to be filled by resource allocator during re-scheduling
 	}
 	return t, nil
 }
@@ -167,7 +164,8 @@ func NewJobMetrics() *JobMetrics {
 	return m
 }
 
-func NewBaseJobInfo(name string, category string, gpuType string) JobInfo {
+// NewBaseJobInfo creates basic job info that assumes linear-speedup.
+func NewBaseJobInfo(name string, category string, gpuType string) *JobInfo {
 	speedup := map[string]float32{"0": 0.0}
 	efficiency := map[string]float32{"0": 0.0}
 
@@ -177,7 +175,7 @@ func NewBaseJobInfo(name string, category string, gpuType string) JobInfo {
 		efficiency[strconv.Itoa(i)] = float32(1)
 	}
 
-	i := JobInfo{
+	i := &JobInfo{
 		Name:                       name,
 		Category:                   category,
 		GpuType:                    gpuType,

@@ -8,13 +8,18 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/heyfey/vodascheduler/pkg/algorithm"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
+	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 	"k8s.io/klog/v2"
 )
 
-const entryPoint = "/allocation"
+const (
+	entryPoint          = "/allocation"
+	databaseNameJobInfo = "job_info"
+)
 
 type ResourceAllocator struct {
 	session *mgo.Session
@@ -54,7 +59,7 @@ func (ra *ResourceAllocator) allocateResourceHandler() http.HandlerFunc {
 			return
 		}
 
-		allocation, err := ra.allocateResource(newReq)
+		allocation, err := ra.allocateResource(&newReq)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(err)
@@ -65,13 +70,14 @@ func (ra *ResourceAllocator) allocateResourceHandler() http.HandlerFunc {
 	}
 }
 
-func (ra *ResourceAllocator) allocateResource(req AllocationRequest) (types.JobScheduleResult, error) {
+func (ra *ResourceAllocator) allocateResource(req *AllocationRequest) (types.JobScheduleResult, error) {
 	klog.InfoS("Allocating resource",
 		"algorithm", req.AlgorithmName, "numGpus", req.NumGpu, "scheduler", req.SchedulerID)
 	defer klog.V(4).InfoS("Finished allocating resource",
 		"algorithm", req.AlgorithmName, "numGpus", req.NumGpu, "scheduler", req.SchedulerID)
 
 	// 1. get all job info from DB
+	ra.getJobsInfo(req)
 
 	// 2. allocate resources via algorithm
 	algorithm, err := algorithm.NewAlgorithmFactory(req.AlgorithmName, req.SchedulerID)
@@ -83,4 +89,29 @@ func (ra *ResourceAllocator) allocateResource(req AllocationRequest) (types.JobS
 
 	allocation := algorithm.Schedule(req.ReadyJobs, req.NumGpu)
 	return allocation, nil
+}
+
+// getJobsInfo finds information of all training jobs in mongodb and update the
+// training jobs' info.
+func (ra *ResourceAllocator) getJobsInfo(req *AllocationRequest) {
+	sess := ra.session.Clone()
+	defer sess.Close()
+
+	klog.V(4).InfoS("Getting all jobs info")
+
+	for _, job := range req.ReadyJobs {
+		trainingJobInfo := trainingjob.NewBaseJobInfo(job.Name, job.Category, job.GpuType)
+		trainingJobInfoMongo := mongo.TrainingJobInfo{}
+		err := sess.DB(databaseNameJobInfo).C(job.Category).Find(bson.M{"name": job.Name}).One(&trainingJobInfoMongo)
+		if err != nil {
+			klog.ErrorS(err, "Failed to find job info, using basic info",
+				"db", databaseNameJobInfo, "job", job.Name, "category", job.Category)
+		} else {
+			klog.V(5).InfoS("Got job info", "job", job)
+			trainingJobInfo.EstimatedRemainningTimeSec = trainingJobInfoMongo.EstimatedRemainningTimeSec
+			trainingJobInfo.Efficiency = trainingJobInfoMongo.Efficiency
+			trainingJobInfo.Speedup = trainingJobInfoMongo.Speedup
+		}
+		job.Info = trainingJobInfo
+	}
 }

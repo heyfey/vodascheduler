@@ -302,7 +302,6 @@ func (s *Scheduler) resched() {
 
 	s.SchedulerLock.Lock()
 	oldJobNumGPU := s.JobNumGPU
-	s.updateAllJobsInfoFromDB()
 
 	timerAlgo := prometheus.NewTimer(s.Metrics.reschedAlgoDuration)
 	newJobNumGPU, err := s.getResourceAllocation(s.makeReadyJobslist())
@@ -335,7 +334,7 @@ func (s *Scheduler) resched() {
 
 // makeReadyJobslist creates ready job list from ready job map.
 func (s *Scheduler) makeReadyJobslist() algorithm.ReadyJobs {
-	list := make(algorithm.ReadyJobs, len(s.ReadyJobsMap))
+	list := make(algorithm.ReadyJobs, 0, len(s.ReadyJobsMap))
 	for _, job := range s.ReadyJobsMap {
 		list = append(list, *job)
 	}
@@ -397,29 +396,6 @@ func (s *Scheduler) getResourceAllocation(jobs algorithm.ReadyJobs) (types.JobSc
 	}
 
 	return result, nil
-}
-
-// updateAllJobsInfoFromDB finds information of all training jobs in mongodb
-// and update the training jobs' info with retrieved information
-func (s *Scheduler) updateAllJobsInfoFromDB() {
-	sess := s.session.Clone()
-	defer sess.Close()
-
-	klog.V(4).InfoS("Updating all jobs info")
-
-	for _, job := range s.ReadyJobsMap {
-		info := mongo.TrainingJobInfo{}
-		err := sess.DB(databaseNameJobInfo).C(job.Category).Find(bson.M{"name": job.Name}).One(&info)
-		if err != nil {
-			klog.ErrorS(err, "Failed to update job info", "job", job.Name)
-			continue
-		}
-		job.Info.EstimatedRemainningTimeSec = info.EstimatedRemainningTimeSec
-		job.Info.Efficiency = info.Efficiency
-		job.Info.Speedup = info.Speedup
-
-		klog.V(5).InfoS("Updated job info", "job", job)
-	}
 }
 
 // recordRunningJobsToDB records witch jobs are currently running in mongodb,
