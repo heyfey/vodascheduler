@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"net"
 )
 
@@ -10,6 +11,9 @@ import (
 func GetInClusterServiceIP(service string, namespace string) (net.IP, error) {
 	host := service + "." + namespace + ".svc.cluster.local"
 	iprecords, err := net.LookupIP(host)
+	if len(iprecords) == 0 {
+		return nil, errors.New("Not found")
+	}
 	return iprecords[0], err
 }
 
@@ -20,5 +24,8 @@ func GetInClusterServiceIP(service string, namespace string) (net.IP, error) {
 func GetInClusterServicePort(service string, namespace string, protocal string, portname string) (uint16, error) {
 	domainName := service + "." + namespace + ".svc.cluster.local"
 	_, addrs, err := net.LookupSRV(portname, protocal, domainName)
+	if len(addrs) == 0 {
+		return 0, errors.New("Not found")
+	}
 	return addrs[0].Port, err
 }
