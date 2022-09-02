@@ -21,6 +21,6 @@ func main() {
 	klog.InfoS("Starting resource allocator")
 
 	ra := allocator.NewResourceAllocator()
-	err := http.ListenAndServe(":"+"55588", ra.Router)
+	err := http.ListenAndServe(":"+"55589", ra.Router)
 	klog.ErrorS(err, "Resource allocator shut down")
 }

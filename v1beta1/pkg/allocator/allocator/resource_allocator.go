@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/heyfey/vodascheduler/pkg/algorithm"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -65,11 +66,21 @@ func (ra *ResourceAllocator) allocateResourceHandler() http.HandlerFunc {
 }
 
 func (ra *ResourceAllocator) allocateResource(req AllocationRequest) (types.JobScheduleResult, error) {
+	klog.InfoS("Allocating resource",
+		"algorithm", req.AlgorithmName, "numGpus", req.NumGpu, "scheduler", req.SchedulerID)
+	defer klog.V(4).InfoS("Finished allocating resource",
+		"algorithm", req.AlgorithmName, "numGpus", req.NumGpu, "scheduler", req.SchedulerID)
+
 	// 1. get all job info from DB
+
 	// 2. allocate resources via algorithm
-	allocation := types.JobScheduleResult{}
-	if len(req.ReadyJobs) > 0 {
-		allocation[req.ReadyJobs[0].Name] = 2
+	algorithm, err := algorithm.NewAlgorithmFactory(req.AlgorithmName, req.SchedulerID)
+	if err != nil {
+		klog.ErrorS(err, "Failed to create algorithm",
+			"algorithm", req.AlgorithmName, "scheduler", req.SchedulerID)
+		return nil, err
 	}
+
+	allocation := algorithm.Schedule(req.ReadyJobs, req.NumGpu)
 	return allocation, nil
 }

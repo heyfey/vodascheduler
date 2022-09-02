@@ -77,8 +77,8 @@ type Scheduler struct {
 	// SchedulerLock is used to protect ReadyJobsMap, DoneJobsMap and JobNumGPU
 	SchedulerLock sync.RWMutex
 
-	// ScheduleAlgorithm is an interface implemented by things that know how to schedule training jobs
-	Algorithm algorithm.SchedulerAlgorithm
+	// Algorithm to schedule training jobs
+	Algorithm string
 
 	// SchedulerMetrics contains run-time metrics of the scheduler
 	Metrics SchedulerMetrics
@@ -185,7 +185,7 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool) (*Scheduler, err
 		JobNumGPU:     map[string]int{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: algorithm.NewElasticFIFO(id),
+		Algorithm: "ElasticFIFO",
 
 		reschedCh:           make(chan time.Time, reschedChannelSize),
 		stopSchedulerCh:     make(chan time.Time),
@@ -305,7 +305,7 @@ func (s *Scheduler) resched() {
 	s.updateAllJobsInfoFromDB()
 
 	timerAlgo := prometheus.NewTimer(s.Metrics.reschedAlgoDuration)
-	newJobNumGPU, err := s.getResourceAllocation(s.makeReadyJobslist(), s.TotalGpus, s.Algorithm.GetName())
+	newJobNumGPU, err := s.getResourceAllocation(s.makeReadyJobslist())
 	if err != nil {
 		s.SchedulerLock.Unlock()
 		s.TriggerResched() // retry after rate limit seconds
@@ -344,7 +344,7 @@ func (s *Scheduler) makeReadyJobslist() algorithm.ReadyJobs {
 
 // getResourceAllocation sends POST request to resource allocator microservice
 // and get the resource allocation.
-func (s *Scheduler) getResourceAllocation(jobs algorithm.ReadyJobs, totalGPU int, algorithm string) (types.JobScheduleResult, error) {
+func (s *Scheduler) getResourceAllocation(jobs algorithm.ReadyJobs) (types.JobScheduleResult, error) {
 	klog.V(4).InfoS("Sending POST request to resource-allocator")
 
 	ip, err := util.GetInClusterServiceIP(service, namespace)
@@ -360,7 +360,12 @@ func (s *Scheduler) getResourceAllocation(jobs algorithm.ReadyJobs, totalGPU int
 		return nil, err
 	}
 
-	req := &allocator.AllocationRequest{NumGpu: totalGPU, AlgorithmName: algorithm, ReadyJobs: jobs}
+	req := &allocator.AllocationRequest{
+		SchedulerID:   s.SchedulerID,
+		NumGpu:        s.TotalGpus,
+		AlgorithmName: s.Algorithm,
+		ReadyJobs:     jobs,
+	}
 	payloadBuf := new(bytes.Buffer)
 	json.NewEncoder(payloadBuf).Encode(req)
 	host := "http://" + ip.String() + ":" + fmt.Sprint(port)
@@ -799,7 +804,7 @@ func (s *Scheduler) updateTimeMetrics(stopTickerCh chan bool) {
 				job.Metrics.LastUpdateTime = time.Now()
 
 				// Tiresias' rules of priority changes
-				if (s.Algorithm.GetName() == "Tiresias" || s.Algorithm.GetName() == "ElasticTiresias") &&
+				if (s.Algorithm == "Tiresias" || s.Algorithm == "ElasticTiresias") &&
 					(status == types.JobRunning || status == types.JobWaiting) {
 					// demote the job if last GPU time crosses threshold
 					if job.Metrics.LastGpuDuration.Seconds() > algorithm.TiresiasThresholdsSec[job.Priority] {
