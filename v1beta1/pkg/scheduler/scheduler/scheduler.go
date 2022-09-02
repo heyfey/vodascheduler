@@ -1,9 +1,12 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"sort"
@@ -13,10 +16,12 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/heyfey/vodascheduler/config"
 	"github.com/heyfey/vodascheduler/pkg/algorithm"
+	"github.com/heyfey/vodascheduler/pkg/allocator/allocator"
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/rabbitmq"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"github.com/heyfey/vodascheduler/pkg/common/util"
 	"github.com/heyfey/vodascheduler/pkg/placement"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
 	mpijobclientset "github.com/kubeflow/mpi-operator/pkg/client/clientset/versioned"
@@ -46,6 +51,13 @@ const (
 	collectionNameJobMetadata   = "v1beta1"
 	databaseNameRunningJobs     = "runnings"
 	gpuNameLabel                = "vodascheduler/accelerator"
+
+	// constants for resource-allocator service
+	service    = "resource-allocator-svc"
+	namespace  = "voda-scheduler"
+	portName   = "voda-resource-allocator"
+	protocal   = "tcp"
+	entryPoint = "/allocation"
 )
 
 type Scheduler struct {
@@ -293,11 +305,19 @@ func (s *Scheduler) resched() {
 	s.updateAllJobsInfoFromDB()
 
 	timerAlgo := prometheus.NewTimer(s.Metrics.reschedAlgoDuration)
-	s.JobNumGPU = s.Algorithm.Schedule(s.makeReadyJobslist(), s.TotalGpus)
+	newJobNumGPU, err := s.getResourceAllocation(s.makeReadyJobslist(), s.TotalGpus, s.Algorithm.GetName())
+	if err != nil {
+		s.SchedulerLock.Unlock()
+		s.TriggerResched() // retry after rate limit seconds
+		klog.ErrorS(err, "Failed to get new resource allocation, would retry after timeout",
+			"timoutSeconds", reschedRateLimitSeconds)
+		return
+	}
 	timerAlgo.ObserveDuration()
 
 	// s.SchedulerLock.Unlock() // may want to unlock here to implement cancelling mechanism
 
+	s.JobNumGPU = newJobNumGPU
 	adjusted := s.applySchedulerResults(oldJobNumGPU)
 	s.SchedulerLock.Unlock()
 
@@ -313,12 +333,65 @@ func (s *Scheduler) resched() {
 	s.Metrics.reschedCounter.Inc()
 }
 
+// makeReadyJobslist creates ready job list from ready job map.
 func (s *Scheduler) makeReadyJobslist() algorithm.ReadyJobs {
 	list := make(algorithm.ReadyJobs, len(s.ReadyJobsMap))
 	for _, job := range s.ReadyJobsMap {
 		list = append(list, *job)
 	}
 	return list
+}
+
+// getResourceAllocation sends POST request to resource allocator microservice
+// and get the resource allocation.
+func (s *Scheduler) getResourceAllocation(jobs algorithm.ReadyJobs, totalGPU int, algorithm string) (types.JobScheduleResult, error) {
+	klog.V(4).InfoS("Sending POST request to resource-allocator")
+
+	ip, err := util.GetInClusterServiceIP(service, namespace)
+	if err != nil {
+		klog.ErrorS(err, "Failed to look up resource allocator service IP", "service", service, "namespace", namespace)
+		return nil, err
+	}
+
+	port, err := util.GetInClusterServicePort(service, namespace, protocal, portName)
+	if err != nil {
+		klog.ErrorS(err, "Failed to look up resource allocator port", "service", service, "namespace", namespace,
+			"portName", portName, "protocal", protocal)
+		return nil, err
+	}
+
+	req := &allocator.AllocationRequest{NumGpu: totalGPU, AlgorithmName: algorithm, ReadyJobs: jobs}
+	payloadBuf := new(bytes.Buffer)
+	json.NewEncoder(payloadBuf).Encode(req)
+	host := "http://" + ip.String() + ":" + fmt.Sprint(port)
+	request, err := http.NewRequest(http.MethodPost, host+entryPoint, payloadBuf)
+	if err != nil {
+		klog.ErrorS(err, "Failed to creat request", "host", host+entryPoint, "request", req)
+		return nil, err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(request)
+	if err != nil {
+		klog.ErrorS(err, "Failed to send request", "request", request)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		klog.ErrorS(err, "Failed to read response", "response", resp)
+		return nil, err
+	}
+
+	var result types.JobScheduleResult
+	err = json.Unmarshal(respBody, &result)
+	if err != nil {
+		klog.ErrorS(err, "Failed to unmarshal response", "response", resp)
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // updateAllJobsInfoFromDB finds information of all training jobs in mongodb
@@ -796,7 +869,7 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 		return
 	}
 
-	// find job metadata
+	// find job metadata in db
 	sess := s.session.Clone()
 	defer sess.Close()
 
