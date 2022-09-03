@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/rabbitmq"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
@@ -32,7 +33,6 @@ func homePage(w http.ResponseWriter, r *http.Request) {
 func (s *Service) createTrainingJobHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Endpoint Hit: createTrainingJob")
-
 		reqBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
@@ -49,10 +49,13 @@ func (s *Service) createTrainingJobHandler() http.HandlerFunc {
 }
 
 // CreateTrainingJob
-// 1. Validate job spec
-// 2. Pre-process job spec
-// 3. Insert job metadata to db
-// 4. Publish msg to mq, which is meant to be subscribed by the scheduler
+//   1. Validate job spec
+//   2. Get or create base job info by job category
+//   3. Pre-process job spec
+//   4. Create training job
+//     4.1. Insert job info to db
+//     4.2. Insert job metadata to db
+//   5. Publish msg to mq, which is meant to be subscribed by the scheduler
 func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	mpijob, err := bytesToMPIJob(data)
 	if err != nil {
@@ -61,17 +64,24 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	}
 	// 1. TODO(heyfey): Validate job spec
 
-	// 2. Pre-process job spec
 	jobName := mpijob.GetName()
 	jobCategory := jobName
 
-	// add timestamp to training job name
+	// 2. Get or create base job info by job category
+	info, err := s.getOrCreateBaseJobInfo(mpijob)
+	if err != nil {
+		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
+		return "", err
+	}
+
+	// 3. Pre-process job spec
+	// extend training job name with timestamp
 	now := time.Now()
 	jobName = jobName + "-" + now.Format("20060102-030405")
 	mpijob.SetName(jobName)
 	setEnvJobName(mpijob, jobName)
 
-	// 3. Insert meta to db
+	// 4. Create training job
 	t, err := trainingjob.NewTrainingJob(mpijob, jobCategory, now)
 	if err != nil {
 		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
@@ -81,13 +91,23 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	sess := s.session.Clone()
 	defer sess.Close()
 
+	// 4.1 Insert job info to db
+	info = initJobInfo(info, jobName, t.Config.Epochs)
+	err = sess.DB(databaseNameJobInfo).C(jobCategory).Insert(info)
+	if err != nil {
+		klog.ErrorS(err, "Failed to insert record to mongo", "database", databaseNameJobInfo,
+			"collection", jobCategory, "job", jobName)
+		return "", err
+	}
+
+	// 4.2. Insert job metadata to db
 	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(t)
 	if err != nil {
 		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
 		return "", err
 	}
 
-	// 4. Publish msg to mq
+	// 5. Publish msg to mq, the msg is meant to be subscribed by the scheduler
 	msg := rabbitmq.Msg{Verb: rabbitmq.VerbCreate, JobName: jobName}
 	err = rabbitmq.PublishToQueue(s.mqConn, t.GpuType, msg)
 	if err != nil {
@@ -127,6 +147,58 @@ func setEnvJobName(mpijob *kubeflowv1.MPIJob, name string) {
 	}
 	// environment variable "JOB_NAME" not found, add it by ourselves
 	env = append(env, v1.EnvVar{Name: string(types.JobName), Value: name})
+}
+
+// getOrCreateBaseJobInfo finds record (history information) of the job by its
+// category. If not found, create and a basic info and insert to database.
+//  DB layout:
+//  db.collection.record
+//  <databaseNameJobInfo>.<job_category>.<job_name>
+// We simply identify job category by its metadata.name, which means jobs with same
+// metadata.name are considered the same and assumed to have similar characteristics.
+func (s *Service) getOrCreateBaseJobInfo(mpijob *kubeflowv1.MPIJob) (mongo.TrainingJobInfo, error) {
+	sess := s.session.Clone()
+	defer sess.Close()
+
+	jobName := mpijob.GetName()
+	jobCategory := jobName
+
+	info := mongo.TrainingJobInfo{}
+	err := sess.DB(databaseNameJobInfo).C(jobCategory).Find(bson.M{"name": jobName}).One(&info)
+	if err != nil {
+		if err == mgo.ErrNotFound {
+			klog.InfoS("Could not find job info, making basic info", "err", err,
+				"database", databaseNameJobInfo, "category", jobCategory, "job", jobName)
+
+			info = mongo.CreateBaseJobInfo(jobName)
+			err = sess.DB(databaseNameJobInfo).C(jobCategory).Insert(info)
+			if err != nil {
+				klog.InfoS("Failed to insert job info", "err", err,
+					"database", databaseNameJobInfo, "category", jobCategory, "job", jobName)
+				return info, err
+			}
+		} else {
+			return info, err
+		}
+	}
+	return info, nil
+}
+
+// initJobInfo creates job info base on given base job info. Also estimates
+// remainning training time.
+// TODO(heyfey): Currently remainning time estimation is epoch-based, for some
+// jobs we may need to do estimation base on steps instead of epochs.
+func initJobInfo(basicInfo mongo.TrainingJobInfo, jobName string, epochs int) mongo.TrainingJobInfo {
+	info := basicInfo
+	info.Name = jobName
+	info.CurrentEpoch = 0
+	info.ElaspedTimeSec = 0.0
+	info.EstimatedRemainningTimeSec = float32(epochs) * basicInfo.EpochTimeSec["1"]
+	info.GpuTimeSec = 0.0
+	info.RemainningEpochs = int32(epochs)
+	info.RunningTimeSec = 0.0
+	info.TotalEpochs = int32(epochs)
+	return info
 }
 
 func (s *Service) deleteTrainingJobHandler() http.HandlerFunc {
