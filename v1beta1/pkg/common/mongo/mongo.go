@@ -34,10 +34,6 @@ type TrainingJobInfo struct {
 	TotalEpochs                int32              `bson:"total_epochs" json:"total_epochs"`
 }
 
-type JobRunning struct {
-	Name string `bson:"name" json:"name"`
-}
-
 // ConnectMongo connects to a mongo session. It returns a pointer to the session,
 // TODO(heyfey): or an error if the connection attempt fails.
 // TODO(heyfey): May require username and password in the future

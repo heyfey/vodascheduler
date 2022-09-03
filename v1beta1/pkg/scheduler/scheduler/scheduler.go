@@ -49,7 +49,6 @@ const (
 	databaseNameJobInfo         = "job_info"
 	databaseNameJobMetadata     = "job_metadata"
 	collectionNameJobMetadata   = "v1beta1"
-	databaseNameRunningJobs     = "runnings"
 	gpuNameLabel                = "vodascheduler/accelerator"
 
 	// constants for resource-allocator service
@@ -322,7 +321,6 @@ func (s *Scheduler) resched() {
 
 	if adjusted {
 		s.SchedulerLock.RLock()
-		s.recordRunningJobsInDB()
 		s.PlacementManager.Place(s.JobNumGPU)
 		s.SchedulerLock.RUnlock()
 	} else {
@@ -396,36 +394,6 @@ func (s *Scheduler) getResourceAllocation(jobs algorithm.ReadyJobs) (types.JobSc
 	}
 
 	return result, nil
-}
-
-// recordRunningJobsToDB records witch jobs are currently running in mongodb,
-// these records would be fetched by the metrics collector
-// If we saves all jobs' scheduler status in mongodb, we may don't need this
-func (s *Scheduler) recordRunningJobsInDB() error {
-	sess := s.session.Clone()
-	defer sess.Close()
-
-	// clear the whole collection
-	_, err := sess.DB(databaseNameRunningJobs).C(s.SchedulerID).RemoveAll(nil)
-	if err != nil {
-		klog.ErrorS(err, "Failed to remove all records in mongo collection",
-			"database", databaseNameJobInfo, "collection", s.SchedulerID)
-		return err
-	}
-	// insert running jobs
-	for _, job := range s.ReadyJobsMap {
-		if job.Status == types.JobRunning {
-			entry := mongo.JobRunning{Name: job.Name}
-			err = sess.DB(databaseNameRunningJobs).C(s.SchedulerID).Insert(entry)
-			if err != nil {
-				klog.ErrorS(err, "Failed to insert record to mongo",
-					"database", databaseNameJobInfo, "collection", s.SchedulerID,
-					"entry", entry)
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // applySchedulerResults performs required changes to achieve new JobScheduleResult

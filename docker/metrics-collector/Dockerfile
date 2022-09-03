@@ -37,6 +37,8 @@ RUN apt-get install -y --no-install-recommends openssh-client openssh-server && 
 
 RUN pip install pymongo pandas
 
+RUN pip install kubeflow-training
+
 WORKDIR /metrics_collector
 COPY ./python/metrics_collector .
-CMD ["python", "update_jobs_info.py"]
+CMD ["python", "metrics_collector.py"]

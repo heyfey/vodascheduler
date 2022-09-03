@@ -6,46 +6,54 @@ from pymongo import MongoClient, errors
 import pandas as pd
 from datetime import datetime
 
-class metrics_collector():
-    def __init__(self, db_job_info, db_runnings):
-        """
-        Arguments:
-            db_job_info: String. Name of database of job info.
-            db_runnings: String. Name of database of running jobs.
-        """
-        self.db_name = db_job_info
-        self.metrics_dir = '/metrics'
+from kubeflow.training import MPIJobClient
 
-        # Service need to exist before this pod. 
+db_job_info = 'job_info'
+metrics_dir = '/metrics'
+namespace = "voda-scheduler"
+
+class metrics_collector():
+    def __init__(self):
+        self.db_name = db_job_info
+        self.metrics_dir = metrics_dir
+        self.namespace = namespace
+
+        self.get_all_running_jobs()
+
+        # service must exist before this pod
         host = os.environ.get('MONGODB_SVC_SERVICE_HOST')
         port = os.environ.get('MONGODB_SVC_SERVICE_PORT')
-        self.client = MongoClient('mongodb://{}:{}'.format(host, port))
+        self.mongo_client = MongoClient('mongodb://{}:{}'.format(host, port))
 
         # Test connection.
         # https://stackoverflow.com/questions/30539183/how-do-you-check-if-the-client-for-a-mongodb-instance-is-valid
         try:
-            info = self.client.server_info() # Forces a call.
+            info = self.mongo_client.server_info() # Forces a call.
         except ServerSelectionTimeoutError:
             print("[ERROR]: Connection to MongoDB failed.")
 
-        self.db = self.client[self.db_name]
+        self.db = self.mongo_client[self.db_name]
 
-        # get all running jobs from db
+    def get_all_running_jobs(self):
+        """ Get all running jobs in given namespace. Currently only get MPIJob.
+        """
         self.jobs = []
-        scheduler_collections = self.client[db_runnings].list_collection_names()
-        for collection in scheduler_collections:
-            for entry in self.client[db_runnings][collection].find():
-                self.jobs.append(entry['name'])
+
+        self.mpijob_client = MPIJobClient()
+        mpijob_list = self.mpijob_client.get(namespace=self.namespace)
+        for mpijob in mpijob_list['items']:
+            self.jobs.append(mpijob['metadata']['name'])
+
         # self.jobs.append('tensorflow2-keras-mnist-elastic') # TODO: remove this line of testing
         # self.jobs.append('tensorflow2-keras-mnist-elastic-20060102_030405') # TODO: remove this line of testing
-        print("found running jobs:")
+        print("Found running jobs:")
         print(self.jobs)
 
     def update_info_all(self):
         for job in self.jobs:
             self.parse_csv_and_update_db(job)
 
-        self.client.close()
+        self.mongo_client.close()
 
     def parse_csv_and_update_db(self, job):
         """
@@ -69,6 +77,10 @@ class metrics_collector():
             return
 
         post = collection.find_one({'name': job_name}) # TODO: error handling
+        # The record need to exist before we update it.
+        if not post:
+            print("Not found, skipping...")
+            return
 
         if post['current_epoch'] == df['epoch'].iloc[-1]:
             print("Same epoch, skipping...")
@@ -166,3 +178,7 @@ class metrics_collector():
         for key, value in dic.items():
             mongo_dict["{}.{}".format(name, key)] = value
         return mongo_dict
+
+if __name__ == '__main__':
+    collector = metrics_collector()
+    collector.update_info_all()
