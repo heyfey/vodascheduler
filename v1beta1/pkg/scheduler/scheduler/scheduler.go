@@ -238,6 +238,10 @@ func (s *Scheduler) TriggerResched() {
 	s.reschedCh <- time.Now()
 }
 
+func (s *Scheduler) TriggerReschedAtTime(time time.Time) {
+	s.reschedCh <- time
+}
+
 func (s *Scheduler) Run() {
 	klog.InfoS("Starting scheduler")
 	defer klog.InfoS("Stopping scheduler")
@@ -306,7 +310,8 @@ func (s *Scheduler) resched() {
 	newJobNumGPU, err := s.getResourceAllocation(s.makeReadyJobslist())
 	if err != nil {
 		s.SchedulerLock.Unlock()
-		s.TriggerResched() // retry after rate limit seconds
+		// retry after rate limit seconds
+		s.TriggerReschedAtTime(time.Now().Add(time.Second * (reschedRateLimitSeconds + 1)))
 		klog.ErrorS(err, "Failed to get new resource allocation, would retry after timeout",
 			"timoutSeconds", reschedRateLimitSeconds)
 		return
