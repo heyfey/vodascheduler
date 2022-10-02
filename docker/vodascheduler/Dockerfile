@@ -1,9 +1,8 @@
-FROM golang:1.13.15
+FROM golang:1.18
 
 WORKDIR /vodascheduler
 COPY . .
-RUN mkdir -p /logs
-WORKDIR ./pkg
+WORKDIR ./pkg/scheduler
 
-RUN go build -o vodascheduler
-CMD ["./vodascheduler"]
+RUN go build -o sched
+CMD ["./sched -gpu=default -resume"]

@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  namespace: voda-scheduler
+  labels:
+    app: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      serviceAccountName: voda-scheduler
+      containers:
+      - name: scheduler
+        image: heyfey/voda-scheduler:latest
+        command: ["/bin/bash","-c"]
+        args:
+        - ./sched
+          -gpu=nvidia-gtx-1080ti
+          -resume
+      tolerations:
+      # toleration key should match taint key in config/config.go
+      - key: "vodascheduler/hostname"
+        operator: "Exists"
+        effect: "NoExecute"

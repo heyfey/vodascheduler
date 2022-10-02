@@ -1,7 +1,7 @@
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
 metadata:
-    name: voda-scheduler-rabbitmq
+    name: rabbitmq
     namespace: voda-scheduler
 spec:
   replicas: 3
@@ -32,5 +32,5 @@ spec:
               - key: app.kubernetes.io/name
                 operator: In
                 values:
-                - voda-scheduler-rabbitmq
+                - rabbitmq
           topologyKey: kubernetes.io/hostname

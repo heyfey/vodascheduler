@@ -28,7 +28,7 @@ type Msg struct {
 func ConnectRabbitMQ() *amqp.Connection {
 	// Find service IP and port from kube-dns (CoreDNS)
 	// my-svc.my-namespace.svc.cluster-domain.example
-	host := "voda-scheduler-rabbitmq.voda-scheduler.svc.cluster.local"
+	host := "rabbitmq.voda-scheduler.svc.cluster.local"
 	iprecords, err := net.LookupIP(host)
 	if err != nil {
 		klog.ErrorS(err, "Failed to look up rabbit-mq service host IP", "host", host)
