@@ -1,0 +1,28 @@
+{{- if eq .Values.repo.persistentVolume.type "nfs" }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: voda-pv-repos
+  namespace: voda-scheduler
+spec:
+  capacity:
+    storage: "{{ .Values.repo.persistentVolume.size }}"
+  accessModes:
+    {{ toYaml .Values.repo.persistentVolume.accessModes | indent 6 }}
+  nfs:
+    server: {{ .Values.repo.persistentVolume.nfs.server }}
+    path: {{ .Values.repo.persistentVolume.nfs.path }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: voda-pvc-repos
+  namespace: voda-scheduler
+spec:
+  accessModes:
+    {{ toYaml .Values.repo.persistentVolume.accessModes | indent 6 }}
+  storageClassName: ""
+  resources:
+    requests:
+      storage: "{{ .Values.repo.persistentVolume.size }}"
+{{- end }}

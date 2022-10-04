@@ -1,0 +1,28 @@
+{{- if eq .Values.kerasdata.persistentVolume.type "nfs" }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: voda-pv-data-keras
+  namespace: voda-scheduler
+spec:
+  capacity:
+    storage: "{{ .Values.kerasdata.persistentVolume.size }}"
+  accessModes:
+    {{ toYaml .Values.kerasdata.persistentVolume.accessModes | indent 6 }}
+  nfs:
+    server: {{ .Values.kerasdata.persistentVolume.nfs.server }}
+    path: {{ .Values.kerasdata.persistentVolume.nfs.path }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: voda-pvc-data-keras
+  namespace: voda-scheduler
+spec:
+  accessModes:
+    {{ toYaml .Values.kerasdata.persistentVolume.accessModes | indent 6 }}
+  storageClassName: ""
+  resources:
+    requests:
+      storage: "{{ .Values.kerasdata.persistentVolume.size }}"
+{{- end }}
