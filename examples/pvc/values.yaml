@@ -1,19 +1,18 @@
 ## Default use NFS for PV.
 ## If using NFS as the shared storage, you must have a running NFS server that is accessible by your Kubernetes
 ## cluster nodes.
-## Need to have the following set
 
 data:
   persistentVolume:
     type: nfs
-    ## metricscollector data Persistent Volume access modes
+    ## Persistent Volume access modes
     ## Must match those of existing PV or dynamic provisioner
     ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
     ##
     accessModes:
       - ReadWriteMany
 
-    ## metricscollector data Persistent Volume size
+    ## Persistent Volume size
     ##
     size: 5Gi
 
@@ -25,14 +24,14 @@ data:
 kerasdata:
   persistentVolume:
     type: nfs
-    ## metricscollector data Persistent Volume access modes
+    ## Persistent Volume access modes
     ## Must match those of existing PV or dynamic provisioner
     ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
     ##
     accessModes:
       - ReadWriteMany
 
-    ## metricscollector data Persistent Volume size
+    ## Persistent Volume size
     ##
     size: 5Gi
 
@@ -44,14 +43,14 @@ kerasdata:
 repo:
   persistentVolume:
     type: nfs
-    ## metricscollector data Persistent Volume access modes
+    ## Persistent Volume access modes
     ## Must match those of existing PV or dynamic provisioner
     ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
     ##
     accessModes:
       - ReadWriteMany
 
-    ## metricscollector data Persistent Volume size
+    ## Persistent Volume size
     ##
     size: 5Gi
 
@@ -63,14 +62,14 @@ repo:
 outputs:
   persistentVolume:
     type: nfs
-    ## metricscollector data Persistent Volume access modes
+    ## Persistent Volume access modes
     ## Must match those of existing PV or dynamic provisioner
     ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
     ##
     accessModes:
       - ReadWriteMany
 
-    ## metricscollector data Persistent Volume size
+    ## Persistent Volume size
     ##
     size: 5Gi
 
