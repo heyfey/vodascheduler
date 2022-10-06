@@ -57,7 +57,7 @@ repo:
     ## TODO: have the following set   
     nfs:
       server: 192.168.20.100
-      path: "/volume1/homes/heyfey/voda/outputs"
+      path: "/volume1/homes/heyfey/voda/vodascheduler"
 
 outputs:
   persistentVolume:
@@ -76,4 +76,4 @@ outputs:
     ## TODO: have the following set   
     nfs:
       server: 192.168.20.100
-      path: "/volume1/homes/heyfey/voda/vodascheduler"
+      path: "/volume1/homes/heyfey/voda/outputs"
