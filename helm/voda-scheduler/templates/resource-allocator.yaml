@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-allocator
+  namespace: voda-scheduler
+  labels:
+    app: resource-allocator
+spec:
+  replicas: {{ .Values.resourceallocator.replicaCount }}
+  selector:
+    matchLabels:
+      app: resource-allocator
+  template:
+    metadata:
+      labels:
+        app: resource-allocator
+    spec:
+      containers:
+      - name: resource-allocator
+        image: "{{ .Values.resourceallocator.image.repository }}:{{ .Values.resourceallocator.image.tag }}"
+        command: ["/bin/bash","-c", "./resource_allocator"]
+        {{- if .Values.resourceallocator.resources }}
+        resources:
+          {{- toYaml .Values.resourceallocator.resources | nindent 10 }}
+        {{- end }}
+        ports:
+        - containerPort: {{ .Values.resourceallocator.service.port }}
+          name: ra-svc
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 6 }}
+      {{- end }}
+      {{- if .Values.resourceallocator.affinity }}
+      affinity:
+        {{- toYaml .Values.resourceallocator.affinity | nindent 10 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resource-allocator-svc
+  namespace: voda-scheduler
+  labels:
+    app: resource-allocator
+spec:
+  type: {{ .Values.resourceallocator.service.type }}
+  clusterIP: {{ .Values.resourceallocator.service.clusterIP }}
+  selector:
+    app: resource-allocator
+  ports:
+    - protocol: TCP
+      name: voda-resource-allocator
+      port: {{ .Values.resourceallocator.service.port }}
+      targetPort: ra-svc

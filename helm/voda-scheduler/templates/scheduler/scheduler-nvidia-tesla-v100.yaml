@@ -1,0 +1,41 @@
+{{- $gpuType := "nvidia-tesla-v100" -}}
+{{- $fullName := "scheduler-nvidia-tesla-v100" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  namespace: voda-scheduler
+  labels:
+    app: {{ $fullName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $fullName }}
+  template:
+    metadata:
+      labels:
+        app: {{ $fullName }}
+    spec:
+      serviceAccountName: voda-scheduler
+      containers:
+      - name: {{ $fullName }}
+        image: "{{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}"
+        command: ["/bin/bash","-c"]
+        args:
+        - ./sched
+          -gpu={{ $gpuType }}
+          {{- if .Values.scheduler.resumeEnabled }}
+          -resume
+          {{- end }}
+          {{- if .Values.scheduler.debugLevel }}
+          -v={{ .Values.scheduler.debugLevel }}
+          {{- end }}
+        {{- if .Values.scheduler.resources }}
+        resources:
+          {{- toYaml .Values.scheduler.resources | nindent 10 }}
+        {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}

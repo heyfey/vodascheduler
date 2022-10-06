@@ -1,3 +1,4 @@
+{{- if eq .Values.metricscollector.persistentVolume.type "nfs" }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -5,12 +6,12 @@ metadata:
   namespace: voda-scheduler
 spec:
   capacity:
-    storage: 5Gi
+    storage: "{{ .Values.metricscollector.persistentVolume.size }}"
   accessModes:
-    - ReadWriteMany
+    {{ toYaml .Values.metricscollector.persistentVolume.accessModes | indent 6 }}
   nfs:
-    server: 192.168.20.100
-    path: "/volume1/homes/heyfey/voda/metrics"
+    server: {{ .Values.metricscollector.persistentVolume.nfs.server }}
+    path: {{ .Values.metricscollector.persistentVolume.nfs.path }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -19,12 +20,13 @@ metadata:
   namespace: voda-scheduler
 spec:
   accessModes:
-    - ReadWriteMany
+    {{ toYaml .Values.metricscollector.persistentVolume.accessModes | indent 6 }}
   storageClassName: ""
   resources:
     requests:
-      storage: 5Gi
+      storage: "{{ .Values.metricscollector.persistentVolume.size }}"
 ---
+{{- end }}
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -60,15 +62,19 @@ metadata:
   name: metrics-collector
   namespace: voda-scheduler
 spec:
-  schedule: "*/1 * * * *"
+  schedule: "{{ .Values.metricscollector.schedule }}"
   jobTemplate:
     spec:
       template:
         spec:
           containers:
           - name: metrics-collector
-            image: heyfey/voda-metrics-collector
-            imagePullPolicy: IfNotPresent
+            image: "{{ .Values.metricscollector.image.repository }}:{{ .Values.metricscollector.image.tag }}"
+            imagePullPolicy: "{{ .Values.metricscollector.image.pullPolicy }}"
+            {{- if .Values.metricscollector.resources }}
+            resources:
+              {{- toYaml .Values.metricscollector.resources | nindent 14 }}
+            {{- end }}
             volumeMounts:
             - name: metrics
               mountPath: /metrics
@@ -77,7 +83,7 @@ spec:
               persistentVolumeClaim:
                 claimName: voda-pvc-metrics
           restartPolicy: Never
+          {{- if .Values.tolerations }}
           tolerations:
-          - key: "vodascheduler/hostname"
-            operator: "Exists"
-            effect: "NoExecute"
+            {{- toYaml .Values.tolerations | nindent 14 }}
+          {{- end }}

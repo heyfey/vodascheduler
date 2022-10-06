@@ -1,3 +1,4 @@
+{{- if eq .Values.mongo.persistentVolume.type "nfs" }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -5,12 +6,12 @@ metadata:
   namespace: voda-scheduler
 spec:
   capacity:
-    storage: 5Gi
+    storage: "{{ .Values.mongo.persistentVolume.size }}"
   accessModes:
-    - ReadWriteMany
+    {{ toYaml .Values.mongo.persistentVolume.accessModes | indent 6 }}
   nfs:
-    server: 192.168.20.100
-    path: "/volume1/homes/heyfey/voda/mongodb/v1beta1"
+    server: {{ .Values.mongo.persistentVolume.nfs.server }}
+    path: {{ .Values.mongo.persistentVolume.nfs.path }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -19,12 +20,13 @@ metadata:
   namespace: voda-scheduler
 spec:
   accessModes:
-    - ReadWriteMany
+    {{ toYaml .Values.mongo.persistentVolume.accessModes | indent 6 }}
   storageClassName: ""
   resources:
     requests:
-      storage: 5Gi
+      storage: "{{ .Values.mongo.persistentVolume.size }}"
 ---
+{{- end }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -35,7 +37,11 @@ metadata:
 spec:
   containers:
   - name: mongodb
-    image: mongo:5
+    image: "{{ .Values.mongo.image.repository }}:{{ .Values.mongo.image.tag }}"
+    {{- if .Values.mongo.resources }}
+    resources:
+      {{- toYaml .Values.mongo.resources | nindent 6 }}
+    {{- end }}
     ports:
       - containerPort: 27017
     volumeMounts:
@@ -45,10 +51,10 @@ spec:
   - name: mongo-data
     persistentVolumeClaim:
       claimName: voda-pvc-mongodb
+  {{- if .Values.tolerations }}
   tolerations:
-  - key: "vodascheduler/hostname"
-    operator: "Exists"
-    effect: "NoExecute"
+    {{- toYaml .Values.tolerations | nindent 6 }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Service

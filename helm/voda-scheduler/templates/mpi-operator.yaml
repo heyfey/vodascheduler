@@ -200,8 +200,7 @@ spec:
           "mpi-operator"
         ]
         imagePullPolicy: Always
+      {{- if .Values.tolerations }}
       tolerations:
-      # toleration key should match taint key in config/config.go
-      - key: "vodascheduler/hostname"
-        operator: "Exists"
-        effect: "NoExecute"
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}

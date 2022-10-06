@@ -1,0 +1,25 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+    name: rabbitmq
+    namespace: voda-scheduler
+spec:
+  replicas: {{ .Values.rabbitmq.replicaCount }}
+  {{- if .Values.rabbitmq.resources }}
+  resources:
+    {{- toYaml .Values.rabbitmq.resources | nindent 6 }}
+  {{- end }}
+  {{- if .Values.tolerations }}
+  tolerations:
+    {{- toYaml .Values.tolerations | nindent 4 }}
+  {{- end }}
+  rabbitmq:
+    additionalConfig: |
+      default_user={{ .Values.rabbitmq.username }}
+      default_pass={{ .Values.rabbitmq.password }}
+  persistence:
+    storageClassName: nfs-client
+  {{- if .Values.rabbitmq.affinity }}
+  affinity:
+    {{- toYaml .Values.rabbitmq.affinity | nindent 6 }}
+  {{- end }}
