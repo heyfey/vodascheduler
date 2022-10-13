@@ -25,9 +25,10 @@ Label all schedulable nodes with `vodascheduler/accelerator=<GPU_TYPE_OF_THE_NOD
 kubectl label nodes <NODE_NAME> vodascheduler/accelerator=<GPU_TYPE_OF_THE_NODE>
 ```
 
-For example:
+For example, suppose we have two nodes: `gpu5` and `gpu1`. `gpu5` has Nvidia GTX 1080Ti and `gpu1` has Nvidia Tesla V100:
 ```
 kubectl label nodes gpu5 vodascheduler/accelerator=nvidia-gtx-1080ti
+kubectl label nodes gpu1 vodascheduler/accelerator=nvidia-tesla-v100
 ```
 
 Voda scheduler uses the label to identify schedulable nodes and their GPUs
@@ -48,6 +49,7 @@ kubectl taint node <NODE_NAME> vodascheduler/hostname=<NODE_NAME>:NoExecute
 For example:
 ```
 kubectl taint node gpu5 vodascheduler/hostname=gpu5:NoExecute
+kubectl taint node gpu1 vodascheduler/hostname=gpu1:NoExecute
 ```
 
 This is for topology-aware scheduling and worker migration, see [Taints and Tolerations for Placement Manager](https://github.com/heyfey/vodascheduler/tree/main/deploy/patch-file-tolerations).
@@ -78,6 +80,23 @@ helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs
 See [Storage Classes#NFS](https://kubernetes.io/docs/concepts/storage/storage-classes/#nfs) and [Kubernetes NFS Subdir External Provisioner](https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner) for more details.
 
 To create `StorageClass` using other than NFS, see [Storage Classes](https://kubernetes.io/docs/concepts/storage/storage-classes/).
+
+### Generate Scheduler Manifests
+
+In `Makefile`, set the GPU types in your cluster to schedule. GPU types should match the node labels you applied before:
+```
+# Voda scheduler deploys GPU scheduler for each specified GPU types
+# GPU type should match node label: vodascheduler/accelerator=<GPU_TYPE_OF_THE_NODE>
+## TODO: have the following set
+GPU_TYPES = nvidia-gtx-1080ti nvidia-tesla-v100
+```
+
+Then,
+```
+make gen-scheduler
+```
+
+This will generate scheduler manifests under `helm/voda-scheduler/templates/scheduler/`
 
 ### Deploy Voda Scheduler
 
