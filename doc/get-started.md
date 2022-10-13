@@ -10,9 +10,9 @@ git clone https://github.com/heyfey/vodascheduler.git
 cd vodascheduler
 ```
 Then,
-1. [Config Scheduler](Config-Scheduler)
-2. [Deploy Scheduler](Deploy-Scheduler)
-3. [Submit Training Job to Scheduler](Submit-Training-Job-to-Scheduler)
+1. [Config Scheduler](#Config-Scheduler)
+2. [Deploy Scheduler](#Deploy-Scheduler)
+3. [Submit Training Job to Scheduler](#Submit-Training-Job-to-Scheduler)
 
 
 ## Config Scheduler
