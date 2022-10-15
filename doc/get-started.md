@@ -59,7 +59,7 @@ This is for topology-aware scheduling and worker migration, see [Taints and Tole
 
 ### Deploy RabbitMQ Cluster Operator
 
-Voda scheduler uses RabbitMQ as one of its conponent. To deploy RabbitMQ, first we need to deploy RabbitMQ cluster operator:
+Voda scheduler uses RabbitMQ as one of its components. To deploy RabbitMQ, first, we need to deploy RabbitMQ cluster operator:
 ```
 kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"
 ```
@@ -100,7 +100,7 @@ This will generate scheduler manifests under `helm/voda-scheduler/templates/sche
 
 ### Deploy Voda Scheduler
 
-Voda scheduler can be deploy via helm:
+Voda scheduler can be deployed via helm:
 
 ```
 helm install voda-scheduler ./helm/voda-schdeuler \

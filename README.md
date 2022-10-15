@@ -6,10 +6,10 @@ tags: voda-scheduler
 
 > Note that everything is experimental and may change significantly at any time.
 
-Voda scheduler is a GPU scheduler for elastic deep learning workloads base on [Kubernetes](https://github.com/kubernetes/kubernetes), [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) and [Horovod](https://github.com/horovod/horovod).
+Voda scheduler is a GPU scheduler for elastic deep learning workloads based on [Kubernetes](https://github.com/kubernetes/kubernetes), [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) and [Horovod](https://github.com/horovod/horovod).
 
 
-Voda Scheduler is designed to be easily deployed in any Kuberneters cluster, for more architectural  details, see [design](https://github.com/heyfey/vodascheduler/blob/main/design/voda-design.md).
+Voda Scheduler is designed to be easily deployed in any Kuberneters cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/design/voda-design.md).
 
 Contents
 - [Why Elastic Training?](#Why-Elastic-Training?)
@@ -21,13 +21,13 @@ Contents
 
 ## Why Elastic Training?
 
-Elastic training enables the distributed training jobs to be scaled up and down dynamically at runtime, without interrupting the training process. With elastic training, the scheduler is able to have training jobs utilize idle resources if there are any, as well as make most efficient resource allocations if the cluster is heavily-loaded, hence increases cluster throughput and reduces overall training time.
+Elastic training enables the distributed training jobs to be scaled up and down dynamically at runtime, without interrupting the training process. With elastic training, the scheduler is able to have training jobs utilize idle resources if there are any, as well as make the most efficient resource allocations if the cluster is heavily-loaded, hence increasing cluster throughput and reducing overall training time.
 
 For more information about elastic training, see [Elastic Horovod](https://horovod.readthedocs.io/en/stable/elastic_include.html) and [Torch Distributed Elastic](https://pytorch.org/docs/stable/distributed.elastic.html).
 
 ## Why Voda Scheduler?
 
-Voda Scheduler provides several key features for elastic deep learning workloads as follows.
+Voda Scheduler provides several critical features for elastic deep learning workloads as follows.
 
 ### Rich Scheduling Algorithms (with Resource Elasticity)
 
@@ -39,15 +39,21 @@ You can also implement your own scheduling algorithms. Voda offers functionaliti
 
 ### Topology-Aware Scheduling
 
-Job placement is critical to performance of  distributed training jobs on GPU clusters. Voda scheduler offers **topology-aware scheduling** and **worker migration** for minimizing communication overhead, as well as maximizing cluster throughput.
+Job placement is critical to the performance of distributed computing jobs on GPU clusters. Voda scheduler offers **topology-aware scheduling** and **worker migration** to consolidate resources, which minimizes communication overhead and maximizes cluster throughput.
 
-### Autoscaling and Fault-Tolerance
+### Node Autoscaling and Fault-Tolerance
 
-Voda scheduler is aware of addition/remove of computing nodes and makes best scheduling decision upon it, thus smoothly
+Voda scheduler is aware of the addition/removal of computing nodes and makes the best scheduling decision upon it, thus smoothly
 - co-works with existing autoscaler.
-- makes best use of spot instances that may come and go with little warning.
+- makes the best use of spot instances that may come and go with little warning.
 - tolerates failing nodes.
 
+### Fault-Tolerance of the Scheduler
+
+- Voda scheduler adopts microservice architecture. 
+    - For the training service, there is no single point of failure.
+    - For the scheduler, it restarts on failure and restores previous status.
+- No training job will be interrupted when any of the Voda scheduler components fails. 
 
 ## Prerequisite
 

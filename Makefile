@@ -4,7 +4,7 @@ IMAGE_TAG = 0.2.0
 IMAGE_TAG_LATEST = latest
 RELEASE_NAME = voda-scheduler
 
-# Voda scheduler deploys GPU scheduler for each specified GPU types
+# Voda scheduler deploys GPU scheduler for each specified GPU type
 # GPU type should match node label: vodascheduler/accelerator=<GPU_TYPE_OF_THE_NODE>
 ## TODO: have the following set
 GPU_TYPES = nvidia-gtx-1080ti nvidia-tesla-v100
