@@ -17,6 +17,8 @@ rabbitmq:
   username: "guest"
   password: "guest"
 
+  storageClass: voda-rabbitmq-nfs-client
+
   ## Pod scheduling preferences (by default keep pods within a release on separate nodes).
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
   ## By default we encougrage RabbitMQ pods on separate nodes
@@ -64,6 +66,12 @@ mongo:
     #   memory: 128Mi
 
   persistentVolume:
+    storageClass: voda-mongodb-nfs-client
+    ## Setting the storageClass attribute to "-" disables dynamic
+    ## provisioning of Persistent Volumes and creates Persistent Volumes 
+    ## using specified type below
+    # storageClass: "-"
+
     type: nfs
 
     ## mongo data Persistent Volume access modes
@@ -77,7 +85,7 @@ mongo:
     ##
     size: 5Gi
 
-    ## Default use NFS for PV
+    ## If using NFS for PV
     ## TODO: have the following set    
     nfs:
       server: 192.168.20.100
@@ -107,6 +115,12 @@ metricscollector:
   #   memory: 128Mi
   
   persistentVolume:
+    storageClass: voda-metrics-nfs-client
+    ## Setting the storageClass attribute to "-" disables dynamic
+    ## provisioning of Persistent Volumes and creates Persistent Volumes 
+    ## using specified type below
+    # storageClass: "-"
+    
     type: nfs
 
     ## metricscollector data Persistent Volume access modes
@@ -120,7 +134,7 @@ metricscollector:
     ##
     size: 5Gi
 
-    ## Default use NFS for PV
+    ## If using NFS for PV
     ## TODO: have the following set  
     nfs:
       server: 192.168.20.100

@@ -1,3 +1,4 @@
+{{- if (eq "-" .Values.metricscollector.persistentVolume.storageClass) }}
 {{- if eq .Values.metricscollector.persistentVolume.type "nfs" }}
 apiVersion: v1
 kind: PersistentVolume
@@ -13,6 +14,8 @@ spec:
     server: {{ .Values.metricscollector.persistentVolume.nfs.server }}
     path: {{ .Values.metricscollector.persistentVolume.nfs.path }}
 ---
+{{- end }}
+{{- end }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -21,12 +24,15 @@ metadata:
 spec:
   accessModes:
     {{ toYaml .Values.metricscollector.persistentVolume.accessModes | indent 6 }}
+  {{- if (eq "-" .Values.metricscollector.persistentVolume.storageClass) }}
   storageClassName: ""
+  {{- else }}
+  storageClassName: "{{ .Values.metricscollector.persistentVolume.storageClass }}"
+  {{- end }}
   resources:
     requests:
       storage: "{{ .Values.metricscollector.persistentVolume.size }}"
 ---
-{{- end }}
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:

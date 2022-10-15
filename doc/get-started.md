@@ -65,16 +65,30 @@ kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/d
 ```
 Ref: [Installing RabbitMQ Cluster Operator in a Kubernetes Cluster](https://www.rabbitmq.com/kubernetes/operator/install-operator.html)
 
-### Create `StorageClass` Resource for RabbitMQ
+### Create `StorageClass` Resource
 
 There are several choices for storage in kubernetes. We take NFS as example here.
 
 ```bash
 helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
 
-helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+helm install voda-rabbitmq-nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
     --set nfs.server=x.x.x.x \
-    --set nfs.path=/exported/path
+    --set nfs.path=/exported/path/for/rabbitmq \
+    --set storageClass.name=voda-rabbitmq-nfs-client \
+    --set storageClass.provisionerName=k8s-sigs.io/voda-rabbitmq-nfs-subdir-external-provisioner
+    
+helm install voda-mongodb-nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+    --set nfs.server=x.x.x.x \
+    --set nfs.path=/exported/path/for/mongodb \
+    --set storageClass.name=voda-mongodb-nfs-client \
+    --set storageClass.provisionerName=k8s-sigs.io/voda-mongodb-nfs-subdir-external-provisioner
+    
+helm install voda-metrics-nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+    --set nfs.server=x.x.x.x \
+    --set nfs.path=/exported/path/for/metrics \
+    --set storageClass.name=voda-metrics-nfs-client \
+    --set storageClass.provisionerName=k8s-sigs.io/voda-metrics-nfs-subdir-external-provisioner
 ```
 
 See [Storage Classes#NFS](https://kubernetes.io/docs/concepts/storage/storage-classes/#nfs) and [Kubernetes NFS Subdir External Provisioner](https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner) for more details.
@@ -103,11 +117,7 @@ This will generate scheduler manifests under `helm/voda-scheduler/templates/sche
 Voda scheduler can be deployed via helm:
 
 ```
-helm install voda-scheduler ./helm/voda-schdeuler \
-    --set mongo.persistentVolume.nfs.server=x.x.x.x \
-    --set mongo.persistentVolume.nfs.path=/exported/path/for/mongodb \
-    --set metricscollector.persistentVolume.nfs.server=x.x.x.x \
-    --set metricscollector.persistentVolume.nfs.path=/exported/path/for/metrics
+helm install voda-scheduler ./helm/voda-schdeuler
 ```
 
 Check if deployed successfully:
