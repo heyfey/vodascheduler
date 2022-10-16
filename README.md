@@ -9,7 +9,7 @@ tags: voda-scheduler
 Voda scheduler is a GPU scheduler for elastic deep learning workloads based on [Kubernetes](https://github.com/kubernetes/kubernetes), [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) and [Horovod](https://github.com/horovod/horovod).
 
 
-Voda Scheduler is designed to be easily deployed in any Kuberneters cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/design/voda-design.md).
+Voda Scheduler is designed to be easily deployed in any Kuberneters cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/doc/design/voda-scheduler-design.md).
 
 Contents
 - [Why Elastic Training?](#Why-Elastic-Training?)

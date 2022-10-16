@@ -2,7 +2,7 @@
 
 The placement manager manages job placements using [taints and tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/).
 
-Learn more in [Placement management](https://github.com/heyfey/vodascheduler/blob/main/design/placement-management.md).
+Learn more in [Placement Management](https://github.com/heyfey/vodascheduler/blob/main/doc/design/placement-management.md).
 
 ## Taint the nodes
 
