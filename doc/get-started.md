@@ -117,7 +117,7 @@ This will generate scheduler manifests under `helm/voda-scheduler/templates/sche
 Voda scheduler can be deployed via helm:
 
 ```
-helm install voda-scheduler ./helm/voda-schdeuler
+helm install voda-scheduler ./helm/voda-scheduler
 ```
 
 Check if deployed successfully:
