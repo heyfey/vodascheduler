@@ -13,7 +13,7 @@ spec:
       template:
         spec:
           containers:
-          - image: heyfey/horovod:sha-6916985-tf2.3.0-torch1.6.0-py3.7-cuda10.1-blacklist-recovery
+          - image: horovod/horovod:latest
             name: mpi-launcher
             env:
               - name: JOB_NAME
@@ -30,10 +30,11 @@ spec:
             args:
             - mkdir -p /outputs/$(JOB_NAME);
               horovodrun
-              -np $(MIN_NP)
-              --min-np $(MIN_NP)
-              --max-np $(MAX_NP)
+              --num-proc $(MIN_NP)
+              --min-num-proc $(MIN_NP)
+              --max-num-proc $(MAX_NP)
               --host-discovery-script /etc/mpi/discover_hosts.sh
+              --blacklist-cooldown-range 30 100
               --network-interface eth0
               python
               /vodascheduler/examples/py/tensorflow2/tensorflow2_keras_mnist_elastic.py
@@ -48,12 +49,13 @@ spec:
             - name: outputs
               persistentVolumeClaim:
                 claimName: voda-pvc-outputs
+          terminationGracePeriodSeconds: 5
     Worker:
       replicas: 2
       template:
         spec:
           containers:
-          - image: heyfey/horovod:sha-6916985-tf2.3.0-torch1.6.0-py3.7-cuda10.1-blacklist-recovery
+          - image: horovod/horovod:latest
             name: mpi-worker
             resources:
               limits:
@@ -80,3 +82,6 @@ spec:
             - name: keras-data
               persistentVolumeClaim:
                 claimName: voda-pvc-data-keras
+          terminationGracePeriodSeconds: 5
+          nodeSelector:
+            vodascheduler/accelerator: nvidia-gtx-1080ti
