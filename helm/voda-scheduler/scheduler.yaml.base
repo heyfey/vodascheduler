@@ -1,5 +1,6 @@
 {{- $gpuType := "$$gpuTypeToBeOverride" -}}
 {{- $fullName := "scheduler-$$gpuTypeToBeOverride" -}}
+{{- $svcName := "scheduler-$$gpuTypeToBeOverride-svc" -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,3 +40,19 @@ spec:
       tolerations:
         {{- toYaml .Values.tolerations | nindent 8 }}
       {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  namespace: voda-scheduler
+  labels:
+    app: {{ $fullName }}
+spec:
+  type: {{ .Values.scheduler.service.type }}
+  selector:
+    app: {{ $fullName }}
+  ports:
+    - protocol: TCP
+      name: voda-scheduler
+      port: {{ .Values.scheduler.service.port }}
