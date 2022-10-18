@@ -22,7 +22,7 @@ docker-build-training-service:
 	docker build -f docker/training-service/Dockerfile . -t ${DOCKER_REPO_USER}/${IMAGE_NAME_PREFIX}training-service:${IMAGE_TAG}
 
 docker-build-scheduler:
-	docker build -f docker/vodascheduler/Dockerfile . -t ${DOCKER_REPO_USER}/${IMAGE_NAME_PREFIX}scheduler:${IMAGE_TAG}
+	docker build -f docker/scheduler/Dockerfile . -t ${DOCKER_REPO_USER}/${IMAGE_NAME_PREFIX}scheduler:${IMAGE_TAG}
 
 docker-build-resource-allocator:
 	docker build -f docker/resource-allocator/Dockerfile . -t ${DOCKER_REPO_USER}/${IMAGE_NAME_PREFIX}resource-allocator:${IMAGE_TAG}
