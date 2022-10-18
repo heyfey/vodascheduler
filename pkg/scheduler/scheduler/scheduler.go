@@ -118,7 +118,7 @@ func countGPUs(node corev1.Node) int {
 }
 
 // NewScheduler creates a new scheduler
-func NewScheduler(id string, kConfig *rest.Config, resume bool) (*Scheduler, error) {
+func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string) (*Scheduler, error) {
 	mpiClient, err := client.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
@@ -184,7 +184,7 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool) (*Scheduler, err
 		JobNumGPU:     map[string]int{},
 		SchedulerLock: sync.RWMutex{},
 
-		Algorithm: "ElasticFIFO",
+		Algorithm: algorithm,
 
 		reschedCh:           make(chan time.Time, reschedChannelSize),
 		stopSchedulerCh:     make(chan time.Time),

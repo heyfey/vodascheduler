@@ -231,6 +231,22 @@ scheduler:
 
   resumeEnabled: true
 
+  ## Scheduling algorithm of the scheduler.
+  ## Which options are supported depends on resource allocator.
+  ##
+  ## Elastic algorithm:
+  algorithm: ElasticFIFO
+  # algorithm: ElasticSRJF
+  # algorithm: ElasticTiresias
+  # algorithm: FfDLOptimizer
+  # algorithm: AFS-L
+
+  ## Non-elastic algorithm:
+  # algorithm: FIFO
+  # algorithm: SRJF
+  # algorithm: Tiresias
+
+
   # Debug log level for the scheduler. 5 is the most comprehensive.
   # debugLevel: 1
   # debugLevel: 2

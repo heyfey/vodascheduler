@@ -20,6 +20,7 @@ func main() {
 	gpuType := flag.String("gpu", "default", "GPU type of this scheduler")
 	kubeconfig := flag.String("kubeconfig", "", "absolute path to the kubeconfig file (required if not running within pod)")
 	resume := flag.Bool("resume", false, "resume from previous status on start")
+	algorithm := flag.String("algorithm", "ElasticFIFO", "scheduling algorithm")
 	/* flags end */
 
 	klog.InitFlags(nil)
@@ -28,7 +29,8 @@ func main() {
 	}
 	klog.InfoS(config.Msg, "version", config.Version)
 	klog.InfoS("Starting scheduler")
-	klog.InfoS("Listing flags", "gpu", *gpuType, "kubeconfig", *kubeconfig)
+	klog.InfoS("Listing flags", "gpu", *gpuType, "kubeconfig", *kubeconfig,
+		"resume", *resume, "algorithm", *algorithm)
 
 	var kConfig *rest.Config
 	var err error
@@ -43,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	sched, err := scheduler.NewScheduler(*gpuType, kConfig, *resume)
+	sched, err := scheduler.NewScheduler(*gpuType, kConfig, *resume, *algorithm)
 	if err != nil {
 		klog.ErrorS(err, "Failed to create scheduler", "gpu", *gpuType)
 		klog.Flush()

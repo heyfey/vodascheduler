@@ -29,6 +29,9 @@ spec:
           {{- if .Values.scheduler.resumeEnabled }}
           -resume
           {{- end }}
+          {{- if .Values.scheduler.algorithm }}
+          -algorithm={{ .Values.scheduler.algorithm }}
+          {{- end }}
           {{- if .Values.scheduler.debugLevel }}
           -v={{ .Values.scheduler.debugLevel }}
           {{- end }}
