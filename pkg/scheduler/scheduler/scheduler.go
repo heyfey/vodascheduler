@@ -231,6 +231,7 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string
 
 func (s *Scheduler) initRoutes() {
 	s.Router.HandleFunc(config.EntryPoint, s.getAllTrainingJobHandler()).Methods("GET")
+	s.Router.HandleFunc("/algorithm", s.configureAlgorithmHandler()).Methods("PUT")
 	s.Router.Handle("/metrics", promhttp.Handler())
 }
 
@@ -1019,4 +1020,33 @@ func (s *Scheduler) constructStatusOnRestart() {
 
 	klog.V(4).InfoS("Re-constructed scheduler status", "readyJobs", &s.ReadyJobsMap,
 		"doneJobs", &s.DoneJobsMap, "jobNumGPU", s.JobNumGPU)
+}
+
+func (s *Scheduler) configureAlgorithmHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Endpoint Hit: configureAlgorithm")
+
+		var algorithm string
+		reqBody, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(err)
+			return
+		}
+
+		err = json.Unmarshal(reqBody, &algorithm)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(err)
+			return
+		}
+
+		s.Algorithm = algorithm
+		klog.InfoS("Configured scheduling algorithm", "algorithm", s.Algorithm)
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Scheduler: "+s.SchedulerID)
+		fmt.Fprintf(w, "\n")
+		fmt.Fprintf(w, "Scheduling Algorithm: "+algorithm)
+	}
 }
