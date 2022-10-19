@@ -211,7 +211,14 @@ func (s *Service) deleteTrainingJobHandler() http.HandlerFunc {
 			return
 		}
 
-		job := string(reqBody)
+		var job string
+		err = json.Unmarshal(reqBody, &job)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(err)
+			return
+		}
+
 		err = s.DeleteTrainingJob(job)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
