@@ -203,16 +203,7 @@ View your logs by:
 
 ### Get job statuses
 
-```
-./bin/cmd get jobs 
-```
-
-outputs:
-
-```
-NAME                                                         STATUS     WORKERS    SCHEDULER  WAITING    RUNNING    TOTAL     
-tensorflow2-keras-mnist-elastic-20211015-035048              Running    1          default    0s         28s        28s  
-```
+See [get job statuses](https://github.com/heyfey/vodascheduler/blob/main/doc/apis.md#Get-Job-Statuses)
 
 ### Monitor training job
 
