@@ -45,7 +45,6 @@ import (
 const (
 	reschedChannelSize          = 100
 	rateLimitTimeMetricsSeconds = 5
-	reschedRateLimitSeconds     = 30
 	databaseNameJobInfo         = "job_info"
 	databaseNameJobMetadata     = "job_metadata"
 	collectionNameJobMetadata   = "v1beta1"
@@ -85,6 +84,8 @@ type Scheduler struct {
 	// channels used for main logic of the scheduler, should only be cousumed by scheduler.Run()
 	reschedCh       chan time.Time
 	stopSchedulerCh chan time.Time
+
+	reschedRateLimitSeconds int
 
 	lastResched         time.Time
 	reschedBlockedUntil time.Time
@@ -186,10 +187,11 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string
 
 		Algorithm: algorithm,
 
-		reschedCh:           make(chan time.Time, reschedChannelSize),
-		stopSchedulerCh:     make(chan time.Time),
-		reschedBlockedUntil: time.Now(),
-		lastResched:         time.Now(),
+		reschedCh:               make(chan time.Time, reschedChannelSize),
+		stopSchedulerCh:         make(chan time.Time),
+		reschedRateLimitSeconds: 30,
+		reschedBlockedUntil:     time.Now(),
+		lastResched:             time.Now(),
 
 		session: session,
 		msgs:    msgs,
@@ -232,6 +234,7 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string
 func (s *Scheduler) initRoutes() {
 	s.Router.HandleFunc(config.EntryPoint, s.getAllTrainingJobHandler()).Methods("GET")
 	s.Router.HandleFunc("/algorithm", s.configureAlgorithmHandler()).Methods("PUT")
+	s.Router.HandleFunc("/ratelimit", s.configureRateLimitHandler()).Methods("PUT")
 	s.Router.Handle("/metrics", promhttp.Handler())
 }
 
@@ -282,7 +285,8 @@ func (s *Scheduler) Run() {
 				}
 				s.resched()
 				s.lastResched = time.Now()
-				s.reschedBlockedUntil = s.lastResched.Add(time.Second * reschedRateLimitSeconds)
+				s.reschedBlockedUntil = s.lastResched.Add(
+					time.Second * time.Duration(s.reschedRateLimitSeconds))
 			} else {
 				// The rescheduling events with timestamp before s.lastResched are
 				// considered sastified, simply ignore them.
@@ -312,9 +316,10 @@ func (s *Scheduler) resched() {
 	if err != nil {
 		s.SchedulerLock.Unlock()
 		// retry after rate limit seconds
-		s.TriggerReschedAtTime(time.Now().Add(time.Second * (reschedRateLimitSeconds + 1)))
+		s.TriggerReschedAtTime(time.Now().Add(
+			time.Second * (time.Duration(s.reschedRateLimitSeconds + 1))))
 		klog.ErrorS(err, "Failed to get new resource allocation, would retry after timeout",
-			"timoutSeconds", reschedRateLimitSeconds)
+			"timoutSeconds", s.reschedRateLimitSeconds)
 		return
 	}
 	timerAlgo.ObserveDuration()
@@ -1048,5 +1053,34 @@ func (s *Scheduler) configureAlgorithmHandler() http.HandlerFunc {
 		fmt.Fprintf(w, "Scheduler: "+s.SchedulerID)
 		fmt.Fprintf(w, "\n")
 		fmt.Fprintf(w, "Scheduling Algorithm: "+algorithm)
+	}
+}
+
+func (s *Scheduler) configureRateLimitHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Endpoint Hit: configureRateLimit")
+
+		var ratelimitSeconds int
+		reqBody, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(err)
+			return
+		}
+
+		err = json.Unmarshal(reqBody, &ratelimitSeconds)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(err)
+			return
+		}
+
+		s.reschedRateLimitSeconds = ratelimitSeconds
+		klog.InfoS("Configured re-scheduling ratelimit", "ratelimitSeconds", ratelimitSeconds)
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Scheduler: "+s.SchedulerID)
+		fmt.Fprintf(w, "\n")
+		fmt.Fprintf(w, "Re-scheduling ratelimit (sec): %d", s.reschedRateLimitSeconds)
 	}
 }
