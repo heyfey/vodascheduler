@@ -64,7 +64,7 @@ A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://k
 1. [Config Scheduler](https://github.com/heyfey/vodascheduler/blob/main/doc/get-started.md#Config-Scheduler)
 2. [Deploy Scheduler](https://github.com/heyfey/vodascheduler/blob/main/doc/get-started.md#Deploy-Scheduler)
 3. [Submit Training Job to Scheduler](https://github.com/heyfey/vodascheduler/blob/main/doc/get-started.md#Submit-Training-Job-to-Scheduler)
-
+4. [API Endpoints](https://github.com/heyfey/vodascheduler/blob/main/doc/apis.md)
 
 
 ## Scheduling Algorithms

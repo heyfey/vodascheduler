@@ -13,6 +13,7 @@ Then,
 1. [Config Scheduler](#Config-Scheduler)
 2. [Deploy Scheduler](#Deploy-Scheduler)
 3. [Submit Training Job to Scheduler](#Submit-Training-Job-to-Scheduler)
+4. [APIs](#APIs)
 
 
 ## Config Scheduler
@@ -229,4 +230,7 @@ outputs:
 Training job deleted: tensorflow2-keras-mnist-elastic-20211015-035048
 ```
 
+## APIs
+
+See [API Endpoints](https://github.com/heyfey/vodascheduler/blob/main/doc/apis.md)
 
