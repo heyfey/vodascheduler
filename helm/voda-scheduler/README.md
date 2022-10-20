@@ -4,7 +4,7 @@ tags: voda-scheduler
 
 # Voda Scheduler Helm Chart
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
+![Version: 0.2.1](https://img.shields.io/badge/Version-0.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.1](https://img.shields.io/badge/AppVersion-0.2.1-informational?style=flat-square)
 
 Voda Scheduler is a GPU scheduler for elastic/distributed deep learning workloads
 
@@ -18,7 +18,7 @@ Voda Scheduler is a GPU scheduler for elastic/distributed deep learning workload
 |-----|------|---------|-------------|
 | metricscollector.image.pullPolicy | string | `"IfNotPresent"` |  |
 | metricscollector.image.repository | string | `"heyfey/voda-metrics-collector"` |  |
-| metricscollector.image.tag | string | `"0.2.0"` |  |
+| metricscollector.image.tag | string | `"0.2.1"` |  |
 | metricscollector.persistentVolume.accessModes[0] | string | `"ReadWriteMany"` |  |
 | metricscollector.persistentVolume.nfs.path | string | `"/volume1/homes/heyfey/voda/metrics"` |  |
 | metricscollector.persistentVolume.nfs.server | string | `"192.168.20.100"` |  |
@@ -49,14 +49,14 @@ Voda Scheduler is a GPU scheduler for elastic/distributed deep learning workload
 | resourceallocator.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey | string | `"kubernetes.io/hostname"` |  |
 | resourceallocator.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight | int | `90` |  |
 | resourceallocator.image.repository | string | `"heyfey/voda-resource-allocator"` |  |
-| resourceallocator.image.tag | string | `"0.2.0"` |  |
+| resourceallocator.image.tag | string | `"0.2.1"` |  |
 | resourceallocator.replicaCount | int | `2` |  |
 | resourceallocator.resources | object | `{}` |  |
 | resourceallocator.service.clusterIP | string | `"10.100.86.94"` |  |
 | resourceallocator.service.port | int | `55589` |  |
 | resourceallocator.service.type | string | `"ClusterIP"` |  |
 | scheduler.image.repository | string | `"heyfey/voda-scheduler"` |  |
-| scheduler.image.tag | string | `"0.2.0"` |  |
+| scheduler.image.tag | string | `"0.2.1"` |  |
 | scheduler.resources | object | `{}` |  |
 | scheduler.resumeEnabled | bool | `true` |  |
 | tolerations[0].effect | string | `"NoExecute"` |  |
@@ -68,7 +68,7 @@ Voda Scheduler is a GPU scheduler for elastic/distributed deep learning workload
 | trainingservice.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey | string | `"kubernetes.io/hostname"` |  |
 | trainingservice.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight | int | `90` |  |
 | trainingservice.image.repository | string | `"heyfey/voda-training-service"` |  |
-| trainingservice.image.tag | string | `"0.2.0"` |  |
+| trainingservice.image.tag | string | `"0.2.1"` |  |
 | trainingservice.replicaCount | int | `2` |  |
 | trainingservice.resources | object | `{}` |  |
 | trainingservice.service.clusterIP | string | `"10.100.86.93"` |  |

@@ -1,6 +1,6 @@
 DOCKER_REPO_USER = ${USER}
 IMAGE_NAME_PREFIX = voda-
-IMAGE_TAG = 0.2.0
+IMAGE_TAG = 0.2.1
 IMAGE_TAG_LATEST = latest
 RELEASE_NAME = voda-scheduler
 
