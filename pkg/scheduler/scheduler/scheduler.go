@@ -857,6 +857,8 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 	s.ReadyJobsMap[t.Name] = t
 	s.JobNumGPU[t.Name] = 0
 
+	klog.InfoS("Training job created", "job", jobName)
+
 	s.TriggerResched()
 	s.Metrics.JobsCreatedCounter.Inc()
 }
@@ -905,6 +907,23 @@ func (s *Scheduler) DeleteTrainingJob(jobName string) {
 	} else {
 		delete(s.DoneJobsMap, jobName)
 	}
+
+	needDelete := (running ||
+		status == types.JobCompleted ||
+		status == types.JobFailed ||
+		status == types.JobCanceled)
+	if needDelete {
+		err = s.mpiClient.MPIJobs(config.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{})
+		if err != nil {
+			klog.ErrorS(err, "Failed to delete training job, this should not happen",
+				"job", klog.KRef(config.Namespace, jobName))
+			// TODO: error handling if not delete
+		} else {
+			klog.V(5).InfoS("Deleted training job", "job", klog.KRef(config.Namespace, jobName))
+		}
+	}
+
+	klog.InfoS("Training job deleted", "job", jobName)
 
 	// trigger resched if delete a running job
 	if running {
