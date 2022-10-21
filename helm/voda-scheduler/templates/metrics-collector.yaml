@@ -73,6 +73,7 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: metrics-collector
           containers:
           - name: metrics-collector
             image: "{{ .Values.metricscollector.image.repository }}:{{ .Values.metricscollector.image.tag }}"
