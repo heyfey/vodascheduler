@@ -21,6 +21,7 @@ spec:
       serviceAccountName: voda-scheduler
       containers:
       - name: {{ $fullName }}
+        imagePullPolicy: "{{ .Values.scheduler.image.pullPolicy }}"
         image: "{{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}"
         command: ["/bin/bash","-c"]
         args:
@@ -34,6 +35,9 @@ spec:
           {{- end }}
           {{- if .Values.scheduler.debugLevel }}
           -v={{ .Values.scheduler.debugLevel }}
+          {{- end }}
+          {{- if .Values.scheduler.configmapOpt }}
+          -configmap_opt
           {{- end }}
         {{- if .Values.scheduler.resources }}
         resources:

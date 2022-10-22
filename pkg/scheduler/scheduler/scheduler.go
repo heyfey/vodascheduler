@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
 	"sort"
@@ -56,6 +57,18 @@ const (
 	portName   = "voda-resource-allocator"
 	protocal   = "tcp"
 	entryPoint = "/allocation"
+
+	// constants for ConfigMap opt
+	annotationKey         = "vodascheduler/dummy"
+	annotationValueLength = 5
+	// labelKey should match the implementation in the mpijob controller
+	// - https://github.com/kubeflow/mpi-operator/blob/5be2a42bf5af1fc9e5d1d96059f1f2dac489061d/pkg/controllers/v1/mpi_job_controller.go#L1143
+	// - https://github.com/kubeflow/training-operator/blob/fecafc762c9122ee72e083a1eec7736f97e5def6/pkg/controller.v1/mpi/mpijob_controller.go#L1283
+	labelKey = "app"
+	// launcherSuffix should match the implementation in the mpijob controller
+	// - https://github.com/kubeflow/mpi-operator/blob/5be2a42bf5af1fc9e5d1d96059f1f2dac489061d/pkg/controllers/v1/mpi_job_controller.go#L76
+	// - https://github.com/kubeflow/training-operator/blob/fecafc762c9122ee72e083a1eec7736f97e5def6/pkg/controller.v1/mpi/mpijob.go#L41
+	launcherSuffix = "-launcher"
 )
 
 type Scheduler struct {
@@ -96,6 +109,8 @@ type Scheduler struct {
 
 	PlacementManager *placement.PlacementManager
 	ticker           time.Ticker
+
+	useConfigMapOpt bool
 }
 
 func discoverGPUs(kClient *kubeClient.Clientset, gpuType string) (int, error) {
@@ -119,7 +134,7 @@ func countGPUs(node corev1.Node) int {
 }
 
 // NewScheduler creates a new scheduler
-func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string) (*Scheduler, error) {
+func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string, useConfigMapOpt bool) (*Scheduler, error) {
 	mpiClient, err := client.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
@@ -199,6 +214,8 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string
 
 		PlacementManager: pm,
 		ticker:           *time.NewTicker(rateLimitTimeMetricsSeconds * time.Second),
+
+		useConfigMapOpt: useConfigMapOpt,
 	}
 
 	s.initRoutes()
@@ -507,6 +524,9 @@ func (s *Scheduler) scaleTrainingJobMany(jobs ...string) {
 
 	for _, job := range jobs {
 		s.scaleTrainingJob(job)
+		if s.useConfigMapOpt {
+			s.addOrUpdateDummyAnnotationForLauncher(job)
+		}
 	}
 }
 
@@ -1044,6 +1064,59 @@ func (s *Scheduler) constructStatusOnRestart() {
 
 	klog.V(4).InfoS("Re-constructed scheduler status", "readyJobs", &s.ReadyJobsMap,
 		"doneJobs", &s.DoneJobsMap, "jobNumGPU", s.JobNumGPU)
+}
+
+// addOrUpdateDummyAnnotationForLauncher adds or updates the dummy annotation of
+// the launcher pod of the given job (mpijob).
+// The logic behinds is to intentionally trigger a pod sync that will sync the
+// config map, so Horovod can get the updated host list with minimun delay.
+// Ref:
+// https://github.com/kubernetes/kubernetes/issues/30189#issuecomment-672889328
+// https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#mounted-configmaps-are-updated-automatically
+func (s *Scheduler) addOrUpdateDummyAnnotationForLauncher(job string) error {
+	launcherPodName := job + launcherSuffix
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() (err error) {
+		pod, err := s.kClient.CoreV1().Pods(config.Namespace).
+			Get(context.TODO(), launcherPodName, metav1.GetOptions{})
+
+		value := randomString(annotationValueLength)
+		if pod.GetAnnotations() == nil {
+			m := make(map[string]string)
+			m[annotationKey] = value
+			pod.SetAnnotations(m)
+		} else {
+			pod.Annotations[annotationKey] = value
+		}
+
+		pod, err = s.kClient.CoreV1().Pods(config.Namespace).
+			Update(context.TODO(), pod, metav1.UpdateOptions{})
+
+		if err != nil {
+			klog.V(5).InfoS("Failed to update dummy annotation for launcher pod",
+				"pod", klog.KObj(pod))
+		} else {
+			klog.V(5).InfoS("Updated dummy annotation for launcher pod",
+				"pod", klog.KObj(pod), "value", value)
+		}
+
+		return err
+	})
+
+	return err
+}
+
+// randomString returns a random string of the given length
+// https://stackoverflow.com/questions/22892120/how-to-generate-a-random-string-of-a-fixed-length-in-go/22892986#22892986
+func randomString(length int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyz")
+	rand.Seed(time.Now().Unix())
+
+	b := make([]rune, length)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
 
 func (s *Scheduler) configureAlgorithmHandler() http.HandlerFunc {
