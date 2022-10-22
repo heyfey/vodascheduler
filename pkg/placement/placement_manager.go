@@ -483,6 +483,7 @@ func (pm *PlacementManager) bestFit(jobRequests types.JobScheduleResult, nodeLis
 			}
 		}
 	}
+	pm.metrics.crossNodeGauge.Set(float64(crossNode))
 }
 
 // bindNodes constructs new nodeStates and replace the original ones by replacing
@@ -605,6 +606,9 @@ func (pm *PlacementManager) updatePodNodeName() []string {
 	}
 	klog.V(4).InfoS("Updated podNodeName table", "oldTable", pm.podNodeName, "newTable", newPodNodeName,
 		"numWorkersToDelete", deletedWorkers, "numLaunchersToDelete", deletedLaunchers)
+
+	pm.metrics.deletedWorkerForMigrationGauge.Set(float64(deletedWorkers))
+	pm.metrics.deletedLauncherForMigrationGauge.Set(float64(deletedLaunchers))
 
 	pm.podNodeName = newPodNodeName
 

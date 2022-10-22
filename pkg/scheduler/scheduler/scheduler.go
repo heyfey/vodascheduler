@@ -328,7 +328,7 @@ func (s *Scheduler) resched() {
 	s.SchedulerLock.Lock()
 	oldJobNumGPU := s.JobNumGPU
 
-	timerAlgo := prometheus.NewTimer(s.Metrics.reschedAlgoDuration)
+	timerAllocation := prometheus.NewTimer(s.Metrics.reschedAllocationDuration)
 	newJobNumGPU, err := s.getResourceAllocation(s.makeReadyJobslist())
 	if err != nil {
 		s.SchedulerLock.Unlock()
@@ -339,7 +339,7 @@ func (s *Scheduler) resched() {
 			"timoutSeconds", s.reschedRateLimitSeconds)
 		return
 	}
-	timerAlgo.ObserveDuration()
+	timerAllocation.ObserveDuration()
 
 	// s.SchedulerLock.Unlock() // may want to unlock here to implement cancelling mechanism
 
@@ -880,7 +880,7 @@ func (s *Scheduler) CreateTrainingJob(jobName string) {
 	klog.InfoS("Training job created", "job", jobName)
 
 	s.TriggerResched()
-	s.Metrics.JobsCreatedCounter.Inc()
+	s.Metrics.jobsCreatedCounter.Inc()
 }
 
 func (s *Scheduler) preprocessTrainingJob(t *trainingjob.TrainingJob) {
@@ -949,7 +949,7 @@ func (s *Scheduler) DeleteTrainingJob(jobName string) {
 	if running {
 		s.TriggerResched()
 	}
-	s.Metrics.JobsDeletedCounter.Inc()
+	s.Metrics.jobsDeletedCounter.Inc()
 }
 
 func (s *Scheduler) getAllTrainingJobHandler() http.HandlerFunc {
