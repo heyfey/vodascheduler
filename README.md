@@ -11,12 +11,15 @@ Voda scheduler is a GPU scheduler for elastic deep learning workloads based on [
 
 Voda Scheduler is designed to be easily deployed in any Kuberneters cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/doc/design/voda-scheduler-design.md).
 
+---
+
 Contents
 - [Why Elastic Training?](#Why-Elastic-Training?)
 - [Why Voda Scheduler?](#Why-Voda-Scheduler?)
 - [Get Started](#Get-Started)
 - [Scheduling Algorithms](#Scheduling-Algorithms)
 - [Docker Images](#Docker-Images)
+- [Prometheus Metrics Exposed](#Prometheus-Metrics-Exposed)
 - [Related Projects](#Related-Projects)
 
 ## Why Elastic Training?
@@ -85,6 +88,10 @@ A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://k
 ## Docker Images
 
 - [Voda Scheduler Docker Images](https://github.com/heyfey/vodascheduler/tree/main/docker)
+
+## Prometheus Metrics Exposed
+
+- [Prometheus Metrics Exposed](https://github.com/heyfey/vodascheduler/tree/main/doc/prometheus-metrics-exposed.md)
 
 ## Related Projects
 

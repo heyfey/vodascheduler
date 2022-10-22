@@ -23,6 +23,7 @@ voda-scheduler-svc                ClusterIP   10.100.86.93     <none>        555
 ## Scheduler
 
 `curl 10.111.11.10:55588/metrics` for `scheduler-nvidia-gtx-1080ti-svc`
+
 `curl 10.98.8.220:55588/metrics` for `scheduler-nvidia-tesla-v100-svc`
 
 | Metric name | Metric type | Description |
