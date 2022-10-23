@@ -203,7 +203,25 @@ View your logs by:
 
 ### Get job statuses
 
-See [get job statuses](https://github.com/heyfey/vodascheduler/blob/main/doc/apis.md#Get-Job-Statuses)
+```
+bash scripts/sched_get.sh /training
+```
+
+Outputs:
+```
+Endpoint: /training
+---
+Service: scheduler-nvidia-gtx-1080ti-svc
+---
+NAME                                                         STATUS     WORKERS    SCHEDULER                 WAITING    RUNNING    TOTAL
+tensorflow2-keras-mnist-elastic-20211015-035048              Running    4          nvidia-gtx-1080ti         0s         28s        28s
+
+
+Service: scheduler-nvidia-tesla-v100-svc
+---
+NAME                                                         STATUS     WORKERS    SCHEDULER                 WAITING    RUNNING    TOTAL
+
+```
 
 ### Monitor training job
 
