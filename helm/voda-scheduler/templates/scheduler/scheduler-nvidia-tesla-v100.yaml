@@ -36,6 +36,9 @@ spec:
           {{- if .Values.scheduler.debugLevel }}
           -v={{ .Values.scheduler.debugLevel }}
           {{- end }}
+          {{- if .Values.scheduler.placementDisabled }}
+          -placement=false
+          {{- end }}
           {{- if .Values.scheduler.configmapOpt }}
           -configmap_opt
           {{- end }}

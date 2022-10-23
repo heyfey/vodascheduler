@@ -257,6 +257,10 @@ scheduler:
   # debugLevel: 4
   # debugLevel: 5
 
+  # placementDisabled disables placement management of the scheduler, including
+  # topology-aware scheduling and worker migration.
+  # placementDisabled: true
+
   # If configmapOpt is true, the scheduler will update dummy annotation of
   # launcher pod every time when its mpijob is scaled. This is to intentionally
   # trigger a pod sync that will sync the config map, so Horovod can get the

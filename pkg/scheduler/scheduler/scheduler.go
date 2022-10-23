@@ -134,7 +134,7 @@ func countGPUs(node corev1.Node) int {
 }
 
 // NewScheduler creates a new scheduler
-func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string, useConfigMapOpt bool) (*Scheduler, error) {
+func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string, placementEnabled bool, useConfigMapOpt bool) (*Scheduler, error) {
 	mpiClient, err := client.NewForConfig(kConfig)
 	if err != nil {
 		return nil, err
@@ -150,9 +150,14 @@ func NewScheduler(id string, kConfig *rest.Config, resume bool, algorithm string
 		return nil, err
 	}
 
-	pm, err := placement.NewPlacementManager(id, kConfig, resume)
-	if err != nil {
-		return nil, err
+	var pm *placement.PlacementManager
+	if placementEnabled {
+		pm, err = placement.NewPlacementManager(id, kConfig, resume)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		pm = nil
 	}
 
 	mpiJobClientSet, err := mpijobclientset.NewForConfig(kConfig)
