@@ -120,7 +120,7 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 			klog.ErrorS(err2, "Failed to remove record", "job", jobName,
 				"database", databaseNameJobInfo, "collection", jobCategory)
 		}
-		_ = cJobMetadata.Remove(bson.M{"job_name": jobName})
+		err2 = cJobMetadata.Remove(bson.M{"job_name": jobName})
 		if err2 != nil {
 			klog.ErrorS(err2, "Failed to remove record", "job", jobName)
 		}
