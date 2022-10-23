@@ -93,7 +93,8 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 
 	// 4.1 Insert job info to db
 	info = initJobInfo(info, jobName, t.Config.Epochs)
-	err = sess.DB(databaseNameJobInfo).C(jobCategory).Insert(info)
+	cJobInfo := sess.DB(databaseNameJobInfo).C(jobCategory)
+	err = cJobInfo.Insert(info)
 	if err != nil {
 		klog.ErrorS(err, "Failed to insert record to mongo", "database", databaseNameJobInfo,
 			"collection", jobCategory, "job", jobName)
@@ -101,7 +102,8 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	}
 
 	// 4.2. Insert job metadata to db
-	err = sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata).Insert(t)
+	cJobMetadata := sess.DB(databaseNameJobMetadata).C(collectionNameJobMetadata)
+	err = cJobMetadata.Insert(t)
 	if err != nil {
 		klog.InfoS("Failed to create training job", "err", err, "job", jobName)
 		return "", err
@@ -111,6 +113,17 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 	msg := rabbitmq.Msg{Verb: rabbitmq.VerbCreate, JobName: jobName}
 	err = rabbitmq.PublishToQueue(s.mqConn, t.GpuType, msg)
 	if err != nil {
+		// Remove the just inserted record if the publishing failed. This is to
+		// avoid inconsistency between the DB and the message queue.
+		err2 := cJobInfo.Remove(bson.M{"name": jobName})
+		if err2 != nil {
+			klog.ErrorS(err2, "Failed to remove record", "job", jobName,
+				"database", databaseNameJobInfo, "collection", jobCategory)
+		}
+		_ = cJobMetadata.Remove(bson.M{"job_name": jobName})
+		if err2 != nil {
+			klog.ErrorS(err2, "Failed to remove record", "job", jobName)
+		}
 		return "", err
 	}
 
