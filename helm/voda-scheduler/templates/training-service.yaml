@@ -18,6 +18,7 @@ spec:
       containers:
       - name: training-service
         image: "{{ .Values.trainingservice.image.repository }}:{{ .Values.trainingservice.image.tag }}"
+        imagePullPolicy: "{{ .Values.trainingservice.image.pullPolicy }}"
         command: ["/bin/bash","-c", "./training_service"]
         {{- if .Values.trainingservice.resources }}
         resources:

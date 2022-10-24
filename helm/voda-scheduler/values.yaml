@@ -97,6 +97,7 @@ metricscollector:
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
     tag: "0.2.1"
+    # tag: "test"
 
   ## schedule of the CronJob, every minute by default
   ## Ref: https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/#cron-schedule-syntax
@@ -146,6 +147,11 @@ trainingservice:
     repository: heyfey/voda-training-service
     # Overrides the image tag whose default is the chart appVersion.
     tag: "0.2.1"
+    # tag: "test"
+
+    # pullPolicy: IfNotPresent
+    pullPolicy: Always
+
 
   service:
     type: ClusterIP
@@ -189,6 +195,10 @@ resourceallocator:
     repository: heyfey/voda-resource-allocator
     # Overrides the image tag whose default is the chart appVersion.
     tag: "0.2.1"
+    # tag: "test"
+
+    # pullPolicy: IfNotPresent
+    pullPolicy: Always
 
   service:
     type: ClusterIP
@@ -228,6 +238,7 @@ scheduler:
     repository: heyfey/voda-scheduler
     # Overrides the image tag whose default is the chart appVersion.
     tag: "0.2.1"
+    # tag: "test"
 
     # pullPolicy: IfNotPresent
     pullPolicy: Always

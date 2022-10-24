@@ -18,6 +18,7 @@ spec:
       containers:
       - name: resource-allocator
         image: "{{ .Values.resourceallocator.image.repository }}:{{ .Values.resourceallocator.image.tag }}"
+        imagePullPolicy: "{{ .Values.resourceallocator.image.pullPolicy }}"
         command: ["/bin/bash","-c", "./resource_allocator"]
         {{- if .Values.resourceallocator.resources }}
         resources:
