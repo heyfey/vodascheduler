@@ -26,22 +26,45 @@ voda-scheduler-svc                ClusterIP   10.100.86.93     <none>        555
 
 `curl 10.98.8.220:55588/metrics` for `scheduler-nvidia-tesla-v100-svc`
 
+or
+
+`bash scripts/sched_get.sh /metrics`
+
 | Metric name | Metric type | Description |
 | -------- | -------- | -------- |
-| voda_scheduler_{GPU_TYPE}_scheduler_info | Gauge | Information about the scheduler. |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_created_total     | Counter     | Counts number of training jobs created.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_deleted_total     | Counter     | Counts number of training jobs deleted.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_completed_total     | Counter     | Counts number of training jobs completed.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_failed_total     | Counter     | Counts number of training jobs failed.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_resched_total     | Counter     | Counts number of rescheduling.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_resched_duration_seconds     | Summary     | A summary of the duration of rescheduling.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_resched_allocator_duration_seconds     | Summary     | A summary of the duration of getting scheduling result from resource allocator.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_ready     | Gauge     | Number of ready jobs.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_waiting     | Gauge     | Number of waiting jobs.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_jobs_running     | Gauge     | Number of running jobs.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_gpus     | Gauge     | Number of schedulable GPUs.     |
-| voda_scheduler_{GPU_TYPE}_scheduler_gpus_inuse     | Gauge     | Number of GPUs in use     |
-| voda_scheduler_{GPU_TYPE}_scheduler_placement_algorithm_duration_seconds | Summary | A summary of the duration of placement algorithm. |
-| voda_scheduler_{GPU_TYPE}_scheduler_placement_workers_migrated | Gauge | Number of deleted worker pods for migration in last rescheduling. |
-| voda_scheduler_{GPU_TYPE}_scheduler_placement_launchers_deleted | Gauge | Number of deleted launcher pods in last rescheduling. |
-| voda_scheduler_{GPU_TYPE}_scheduler_placement_jobs_cross_node | Gauge | Number of job that need cross-node communication. |
+| voda_scheduler_<GPU_TYPE>_scheduler_info | Gauge | Information about the scheduler. |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_created_total     | Counter     | Counts number of training jobs created.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_deleted_total     | Counter     | Counts number of training jobs deleted.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_completed_total     | Counter     | Counts number of training jobs completed.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_failed_total     | Counter     | Counts number of training jobs failed.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_resched_total     | Counter     | Counts number of rescheduling.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_resched_duration_seconds     | Summary     | A summary of the duration of rescheduling.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_resched_allocator_duration_seconds     | Summary     | A summary of the duration of getting scheduling result from resource allocator.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_ready     | Gauge     | Number of ready jobs.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_waiting     | Gauge     | Number of waiting jobs.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_jobs_running     | Gauge     | Number of running jobs.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_gpus     | Gauge     | Number of schedulable GPUs.     |
+| voda_scheduler_<GPU_TYPE>_scheduler_gpus_inuse     | Gauge     | Number of GPUs in use     |
+| voda_scheduler_<GPU_TYPE>_scheduler_placement_algorithm_duration_seconds | Summary | A summary of the duration of placement algorithm. |
+| voda_scheduler_<GPU_TYPE>_scheduler_placement_workers_migrated | Gauge | Number of deleted worker pods for migration in last rescheduling. |
+| voda_scheduler_<GPU_TYPE>_scheduler_placement_launchers_deleted | Gauge | Number of deleted launcher pods in last rescheduling. |
+| voda_scheduler_<GPU_TYPE>_scheduler_placement_jobs_cross_node | Gauge | Number of job that need cross-node communication. |
+
+## Resource Allocator
+
+`curl 10.100.86.94:55589/metrics`
+
+or 
+
+`bash scripts/allocator_get.sh /metrics`
+
+| Metric name | Metric type | Description | Labels |
+| -------- | -------- | -------- | --- |
+| voda_scheduler_resource_allocator_info | Gauge | Information about the resource allocator. | `namespace`=`voda-scheduler` <br> `version`=<version> |
+| voda_scheduler_resource_allocator_database_duration_seconds | Summary | A summary of the duration of fetching information from database. | |
+| voda_scheduler_resource_allocator_num_ready_jobs | Summary | A summary of the number of ready jobs of the request. | |
+| voda_scheduler_resource_allocator_num_gpus | Summary | A summary of the number of GPUs of the request. | |
+| voda_scheduler_resource_allocator_scheduling_algorithm_duration_seconds | Summary | A summary of the duration of scheduling algorithm. | |
+| voda_scheduler_resource_allocator_labeled_num_ready_jobs | Summary | A summary of the number of ready jobs of the request. | `algorithm`=<algorithm-name>  |
+| voda_scheduler_resource_allocator_labeled_num_gpus | Summary | A summary of the number of GPUs of the request. | `algorithm`=<algorithm-name>  |
+| voda_scheduler_resource_allocator_labeled_scheduling_algorithm_duration_seconds | Summary | A summary of the duration of scheduling algorithm. | `algorithm`=<algorithm-name> |

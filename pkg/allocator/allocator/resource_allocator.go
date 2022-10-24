@@ -10,6 +10,7 @@ import (
 	"github.com/heyfey/vodascheduler/pkg/common/mongo"
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -24,6 +25,7 @@ const (
 type ResourceAllocator struct {
 	session *mgo.Session
 	Router  *mux.Router
+	Metrics ResourceAllocatorMetrics
 }
 
 func NewResourceAllocator() *ResourceAllocator {
@@ -32,6 +34,7 @@ func NewResourceAllocator() *ResourceAllocator {
 		Router:  mux.NewRouter(),
 	}
 	ra.initRoutes()
+	ra.initResourceAllocatorMetrics()
 	return ra
 }
 
@@ -76,8 +79,17 @@ func (ra *ResourceAllocator) allocateResource(req *AllocationRequest) (types.Job
 	defer klog.V(4).InfoS("Finished allocating resource",
 		"algorithm", req.AlgorithmName, "numGpus", req.NumGpu, "scheduler", req.SchedulerID)
 
+	numReadyJobs := len(req.ReadyJobs)
+	ra.Metrics.numReadyJobs.Observe(float64(numReadyJobs))
+	ra.Metrics.numReadyJobsLabeled.WithLabelValues(req.AlgorithmName).Observe(float64(numReadyJobs))
+
+	ra.Metrics.numGpus.Observe(float64(req.NumGpu))
+	ra.Metrics.numGpusLabeled.WithLabelValues(req.AlgorithmName).Observe(float64(req.NumGpu))
+
 	// 1. get all job info from DB
+	timer := prometheus.NewTimer(ra.Metrics.accessDBDuration)
 	ra.getJobsInfo(req)
+	timer.ObserveDuration()
 
 	// 2. allocate resources via algorithm
 	algorithm, err := algorithm.NewAlgorithmFactory(req.AlgorithmName, req.SchedulerID)
@@ -87,7 +99,12 @@ func (ra *ResourceAllocator) allocateResource(req *AllocationRequest) (types.Job
 		return nil, err
 	}
 
+	timer = prometheus.NewTimer(ra.Metrics.schedulingAlgorithmDuration)
+	timer2 := prometheus.NewTimer(ra.Metrics.schedulingAlgorithmDurationLabeled.WithLabelValues(req.AlgorithmName))
 	allocation := algorithm.Schedule(req.ReadyJobs, req.NumGpu)
+	go timer.ObserveDuration()
+	timer2.ObserveDuration()
+
 	return allocation, nil
 }
 
