@@ -14,6 +14,7 @@ type Service struct {
 	Router  *mux.Router
 	session *mgo.Session
 	mqConn  *amqp.Connection
+	Metrics ServiceMetrics
 }
 
 func NewService() *Service {
@@ -23,6 +24,7 @@ func NewService() *Service {
 		mqConn:  rabbitmq.ConnectRabbitMQ(),
 	}
 	s.initRoutes()
+	s.initServiceMetrics()
 	return s
 }
 

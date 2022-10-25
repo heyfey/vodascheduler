@@ -12,6 +12,7 @@ import (
 	"github.com/heyfey/vodascheduler/pkg/common/trainingjob"
 	"github.com/heyfey/vodascheduler/pkg/common/types"
 	kubeflowv1 "github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v1"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	v1 "k8s.io/api/core/v1"
@@ -57,6 +58,11 @@ func (s *Service) createTrainingJobHandler() http.HandlerFunc {
 //     4.2. Insert job metadata to db
 //   5. Publish msg to mq, which is meant to be subscribed by the scheduler
 func (s *Service) CreateTrainingJob(data []byte) (string, error) {
+	timer := prometheus.NewTimer(s.Metrics.createJobDuration)
+	defer timer.ObserveDuration()
+
+	timer2 := prometheus.NewTimer(s.Metrics.createJobSuccessDuration)
+
 	mpijob, err := bytesToMPIJob(data)
 	if err != nil {
 		klog.InfoS("Failed to convert data to mpijob", "err", err)
@@ -127,6 +133,8 @@ func (s *Service) CreateTrainingJob(data []byte) (string, error) {
 		return "", err
 	}
 
+	timer2.ObserveDuration() // Only observe duration if success to create job
+	s.Metrics.jobsCreatedCounter.Inc()
 	klog.InfoS("Created training job", "job", jobName)
 	return jobName, nil
 }
@@ -245,6 +253,11 @@ func (s *Service) deleteTrainingJobHandler() http.HandlerFunc {
 // 1. Delete job metadata from db
 // 2. Publish msg to mq, which is meant to be subscribed by the scheduler
 func (s *Service) DeleteTrainingJob(jobName string) error {
+	timer := prometheus.NewTimer(s.Metrics.deleteJobDuration)
+	defer timer.ObserveDuration()
+
+	timer2 := prometheus.NewTimer(s.Metrics.deleteJobSuccessDuration)
+
 	// 1. Delete metadata from db
 	sess := s.session.Clone()
 	defer sess.Close()
@@ -278,6 +291,8 @@ func (s *Service) DeleteTrainingJob(jobName string) error {
 		return err
 	}
 
+	timer2.ObserveDuration() // Only observe duration if success to delete job
+	s.Metrics.jobsDeletedCounter.Inc()
 	klog.InfoS("Deleted training job", "job", jobName)
 	return nil
 }

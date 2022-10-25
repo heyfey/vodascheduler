@@ -68,3 +68,22 @@ or
 | voda_scheduler_resource_allocator_labeled_num_ready_jobs | Summary | A summary of the number of ready jobs of the request. | `algorithm`=<algorithm-name>  |
 | voda_scheduler_resource_allocator_labeled_num_gpus | Summary | A summary of the number of GPUs of the request. | `algorithm`=<algorithm-name>  |
 | voda_scheduler_resource_allocator_labeled_scheduling_algorithm_duration_seconds | Summary | A summary of the duration of scheduling algorithm. | `algorithm`=<algorithm-name> |
+
+
+## Training Service
+
+`curl 10.100.86.93:55587/metrics`
+
+or 
+
+`bash scripts/service_get.sh /metrics`
+
+| Metric name | Metric type | Description |
+| -------- | -------- | -------- |
+| voda_scheduler_training_service_info | Gauge | Information about the training service. |
+| voda_scheduler_training_service_jobs_created_total | Counter | Counts number of training jobs created. |
+| voda_scheduler_training_service_jobs_deleted_total | Counter | Counts number of training jobs deleted. |
+| voda_scheduler_training_service_create_job_duration_seconds | Summary | A summary of the duration of creating training job. |
+| voda_scheduler_training_service_create_job_success_duration_seconds | Summary | A summary of the duration of successfully creating training job. |
+| voda_scheduler_training_service_delete_job_duration_seconds | Summary | A summary of the duration of deleting training job. |
+| voda_scheduler_training_service_delete_job_success_duration_seconds | Summary | A summary of the duration of successfully deleting training job. |
