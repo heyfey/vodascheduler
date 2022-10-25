@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Sending GET request to scheduler
+# Sending GET request to resource allocator
 # $1 = API endpoint
-# $2 = Scheduler name, curl all deployed scheduler if not specified
 
 port=55589
 namespace=voda-scheduler
