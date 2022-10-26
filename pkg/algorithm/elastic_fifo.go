@@ -77,3 +77,7 @@ func (a *ElasticFIFO) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobSc
 func (a *ElasticFIFO) GetName() string {
 	return a.algorithm
 }
+
+func (a *ElasticFIFO) NeedJobInfo() bool {
+	return false
+}

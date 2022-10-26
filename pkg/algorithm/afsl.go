@@ -65,6 +65,10 @@ func (a *AFSL) GetName() string {
 	return a.algorithm
 }
 
+func (a *AFSL) NeedJobInfo() bool {
+	return true
+}
+
 func (a *AFSL) topPriority(jobs ReadyJobs, result types.JobScheduleResult) trainingjob.TrainingJob {
 	j := jobs[0]
 	for i := 1; i < len(jobs); i++ {

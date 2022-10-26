@@ -54,3 +54,7 @@ func (a *FIFO) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleR
 func (a *FIFO) GetName() string {
 	return a.algorithm
 }
+
+func (a *FIFO) NeedJobInfo() bool {
+	return false
+}

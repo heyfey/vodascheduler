@@ -19,6 +19,8 @@ type ReadyJobs []trainingjob.TrainingJob
 type SchedulerAlgorithm interface {
 	Schedule(ReadyJobs, int) types.JobScheduleResult
 	GetName() string
+	// Whether need training job info for scheduling
+	NeedJobInfo() bool
 }
 
 func NewAlgorithmFactory(algorithm string, schedulerID string) (SchedulerAlgorithm, error) {

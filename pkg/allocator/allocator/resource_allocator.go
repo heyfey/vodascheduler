@@ -86,12 +86,6 @@ func (ra *ResourceAllocator) allocateResource(req *AllocationRequest) (types.Job
 	ra.Metrics.numGpus.Observe(float64(req.NumGpu))
 	ra.Metrics.numGpusLabeled.WithLabelValues(req.AlgorithmName).Observe(float64(req.NumGpu))
 
-	// 1. get all job info from DB
-	timer := prometheus.NewTimer(ra.Metrics.accessDBDuration)
-	ra.getJobsInfo(req)
-	timer.ObserveDuration()
-
-	// 2. allocate resources via algorithm
 	algorithm, err := algorithm.NewAlgorithmFactory(req.AlgorithmName, req.SchedulerID)
 	if err != nil {
 		klog.ErrorS(err, "Failed to create algorithm",
@@ -99,7 +93,15 @@ func (ra *ResourceAllocator) allocateResource(req *AllocationRequest) (types.Job
 		return nil, err
 	}
 
-	timer = prometheus.NewTimer(ra.Metrics.schedulingAlgorithmDuration)
+	// 1. get all job info from DB if needed
+	if algorithm.NeedJobInfo() {
+		timer := prometheus.NewTimer(ra.Metrics.accessDBDuration)
+		ra.getJobsInfo(req)
+		timer.ObserveDuration()
+	}
+
+	// 2. allocate resources
+	timer := prometheus.NewTimer(ra.Metrics.schedulingAlgorithmDuration)
 	timer2 := prometheus.NewTimer(ra.Metrics.schedulingAlgorithmDurationLabeled.WithLabelValues(req.AlgorithmName))
 	allocation := algorithm.Schedule(req.ReadyJobs, req.NumGpu)
 	go timer.ObserveDuration()

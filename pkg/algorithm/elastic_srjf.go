@@ -74,3 +74,7 @@ func (a *ElasticSRJF) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobSc
 func (a *ElasticSRJF) GetName() string {
 	return a.algorithm
 }
+
+func (a *ElasticSRJF) NeedJobInfo() bool {
+	return true
+}

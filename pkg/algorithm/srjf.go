@@ -54,3 +54,7 @@ func (a *SRJF) Schedule(jobs ReadyJobs, totalGPU int) (result types.JobScheduleR
 func (a *SRJF) GetName() string {
 	return a.algorithm
 }
+
+func (a *SRJF) NeedJobInfo() bool {
+	return true
+}

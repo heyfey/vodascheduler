@@ -132,3 +132,7 @@ func (a *FfDLOptimizer) Schedule(jobs ReadyJobs, totalGPU int) (result types.Job
 func (a *FfDLOptimizer) GetName() string {
 	return a.algorithm
 }
+
+func (a *FfDLOptimizer) NeedJobInfo() bool {
+	return true
+}

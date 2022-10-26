@@ -162,6 +162,10 @@ func (a *ElasticTiresias) GetName() string {
 	return a.algorithm
 }
 
+func (a *ElasticTiresias) NeedJobInfo() bool {
+	return true
+}
+
 // calNextGain returns the efficiency gain if one more worker allocated
 func calNextGain(speedup map[string]float32, workers int) float32 {
 	return speedup[fmt.Sprint(workers+1)] - speedup[fmt.Sprint(workers)]

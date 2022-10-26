@@ -102,6 +102,10 @@ func (a *Tiresias) GetName() string {
 	return a.algorithm
 }
 
+func (a *Tiresias) NeedJobInfo() bool {
+	return false
+}
+
 func TiresiasDemotePriority(priority int) int {
 	if priority < TiresiasQueueNum-1 {
 		return priority + 1
