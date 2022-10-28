@@ -352,7 +352,7 @@ func (s *Scheduler) resched() {
 	adjusted := s.applySchedulerResults(oldJobNumGPU)
 	s.SchedulerLock.Unlock()
 
-	if adjusted {
+	if s.PlacementManager != nil && adjusted {
 		s.SchedulerLock.RLock()
 		s.PlacementManager.Place(s.JobNumGPU)
 		s.SchedulerLock.RUnlock()
