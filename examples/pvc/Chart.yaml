@@ -2,8 +2,8 @@ apiVersion: v2
 name: voda-examples-pvc
 description: Persistent Volume for running example elastic/distributed training job
 type: application
-version: 0.2.1
-appVersion: "0.2.1"
+version: 0.2.2
+appVersion: "0.2.2"
 keywords:
 - voda
 - voda-scheduler

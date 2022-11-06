@@ -96,7 +96,7 @@ metricscollector:
     repository: heyfey/voda-metrics-collector
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0.2.1"
+    tag: "0.2.2"
     # tag: "test"
 
   ## schedule of the CronJob, every minute by default
@@ -146,7 +146,7 @@ trainingservice:
   image:
     repository: heyfey/voda-training-service
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0.2.1"
+    tag: "0.2.2"
     # tag: "test"
 
     # pullPolicy: IfNotPresent
@@ -194,7 +194,7 @@ resourceallocator:
   image:
     repository: heyfey/voda-resource-allocator
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0.2.1"
+    tag: "0.2.2"
     # tag: "test"
 
     # pullPolicy: IfNotPresent
@@ -237,7 +237,7 @@ scheduler:
   image:
     repository: heyfey/voda-scheduler
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0.2.1"
+    tag: "0.2.2"
     # tag: "test"
 
     # pullPolicy: IfNotPresent
