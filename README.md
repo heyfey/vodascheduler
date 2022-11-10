@@ -9,7 +9,7 @@ tags: voda-scheduler
 Voda scheduler is a GPU scheduler for elastic deep learning workloads based on [Kubernetes](https://github.com/kubernetes/kubernetes), [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) and [Horovod](https://github.com/horovod/horovod).
 
 
-Voda Scheduler is designed to be easily deployed in any Kuberneters cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/doc/design/voda-scheduler-design.md).
+Voda Scheduler is designed to be easily deployed in any Kubernetes cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/doc/design/voda-scheduler-design.md).
 
 ---
 
@@ -75,8 +75,8 @@ A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://k
 
 | Algorithm | Elastic | Reference |
 | -------- | -------- | -------- |
-| FIFO (default)   |     |      |
-| Elastic-FIFO     | :heavy_check_mark:    |      |
+| FIFO   |     |      |
+| Elastic-FIFO (default)     | :heavy_check_mark:    |      |
 | SRJF             |     |      |
 | Elastic-SRJF     | :heavy_check_mark:    |      |
 | Tiresias         |     | Gu, Juncheng, et al. "Tiresias: A GPU cluster manager for distributed deep learning." 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI 19). 2019. https://www.usenix.org/conference/nsdi19/presentation/gu     |
