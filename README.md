@@ -36,7 +36,7 @@ For more information about elastic training, see [Elastic Horovod](https://horov
 Voda Scheduler provides several critical features for elastic deep learning workloads as follows:
 
 - Rich [Scheduling Algorithms](#Scheduling-Algorithms) (with resource elasticity) to choose from
-- Topology-Aware Scheduling & Worker Migration
+- [Topology-Aware Scheduling & Worker Migration](https://github.com/heyfey/vodascheduler/blob/main/doc/design/placement-management.md)
     -  Actively consolidate resources to maximize cluster throughput
     -  Particularly important for elastic training since resource allocations can be dynamically adjusted
 - Node Addition/Deletion Awareness
