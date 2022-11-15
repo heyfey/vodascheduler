@@ -593,7 +593,8 @@ func (pm *PlacementManager) updatePodNodeName() []string {
 					deletedWorkers++
 
 					klog.V(5).InfoS("Found worker pod need migration",
-						klog.KRef(config.Namespace, podName), "fromNode", oldNode, "toNode", nSlots.node)
+						"pod", klog.KRef(config.Namespace, podName),
+						"fromNode", oldNode, "toNode", nSlots.node)
 				}
 				newPodNodeName[podName] = nSlots.node
 				idx++
