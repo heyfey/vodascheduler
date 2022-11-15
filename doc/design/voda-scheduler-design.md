@@ -10,7 +10,7 @@ Voda scheduler offers a system for scheduling elastic deep learning workloads. I
 
 **Schedule MPIJob.** [Horovod](https://github.com/horovod/horovod) is a popular distributed/elastic training framework for TensorFlow, Keras, PyTorch, and Apache MXNet, which can be easily deployed in kubernetes cluster as MPIJob. Currently, Voda scheduler supports scheduling MPIJob. We plan to support PyTorchJob in the future to support [torch.distributed.elastic](https://pytorch.org/docs/stable/distributed.elastic.html). Both MPIJob and PyTorchJob are controlled by [Kubeflow Training Operator](https://github.com/kubeflow/training-operator).
 
-**Re-scheduling.** Voda scheduler uses event-driven scheduling. At every re-scheduling event, the scheduler comes out with a scheduling plan of `<job_name: # of GPUs>` and adjusts from the old plan to the new plan. In other word, at every re-scheduling, a training job is possible to be started, scaled up, scaled down, or preempted.
+**Event-Driven Re-scheduling.** On every re-scheduling event, the scheduler comes out with a scheduling plan of `<job_name: # of GPUs>` and adjusts from the old plan to the new plan. In other word, at every re-scheduling, a training job is possible to be started, scaled up, scaled down, or preempted.
 
 The re-scheduling event includes:
 1. job arrived
@@ -24,7 +24,7 @@ The following diagram shows the flow of re-scheduling:
 
 **Execution Time Prediction** is used by many scheduling algorithms to enhance performance. Voda scheduler collects runtime metrics of running jobs, estimates their remaining execution time, and makes scheduling decisions accordingly. 
 
-**Separated Sub-scheduler for Each Kind of GPU** is deployed by Voda scheduler. Users are required to specify what kind of GPU should be used for the training job.
+**Scheduling in Heterogeneous GPU clusters.** Voda scheduler deploys separated sub-scheduler for each kind of GPU. Users are required to specify what kind of GPU should be used for the training job.
 
 ## Architecture Overview
 
@@ -32,7 +32,7 @@ Voda scheduler adopts microservice architecture, consisting of several loosely c
 
 ![](https://i.imgur.com/IWkHRbl.png)
 
-Voda scheduler builds on Kubernetes as a system for deploying, scaling, and managing complex systems. It also relies on Kubeflow Training Operator as MPIJob controller.
+Voda scheduler builds on Kubernetes as a system for deploying, scaling, and managing complex systems. It relies on Kubeflow Training Operator as MPIJob controller.
 
 In above diagram, three sub-schedulers are deployed to schedule jobs using either CPU, Nvidia GTX 1080Ti, or Nvidia Tesla V100 for training. 
 

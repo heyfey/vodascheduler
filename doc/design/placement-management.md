@@ -20,7 +20,7 @@ Therefore, to enhance cluster throughput and reduce job completion time, effecti
 
 To enable the placement manager to fully control the node bindings of all worker pods, we need to taint all nodes with `vodascheduler/hostname=<node_name>:NoExecute` and let the placement manager manage the tolerations of the worker pods.
 
-Also see [Taints and Tolerations for Placement Manager](https://github.com/heyfey/vodascheduler/blob/main/deploy/taints-and-tolerations-for-placement-manager.md)
+Also see [Taints and Tolerations for Placement Manager](https://github.com/heyfey/vodascheduler/blob/main/deploy/README.md)
 
 ### Workflow
 
@@ -35,4 +35,4 @@ Noted that we use the term migration is actually a simplification. Not like the 
 
 ## Algorithm
 
-See the [thesis](https://ndltd.ncl.edu.tw/cgi-bin/gs32/gsweb.cgi/ccd=tuT7lS/record?r1=1&h1=0) section 3.4.2 for details.
+See the [thesis](https://hdl.handle.net/11296/hj4rzp) section 3.4.2 for details.

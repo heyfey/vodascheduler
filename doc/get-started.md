@@ -241,5 +241,5 @@ Training job deleted: tensorflow2-keras-mnist-elastic-20211015-035048
 
 ## APIs
 
-See [API Endpoints](https://github.com/heyfey/vodascheduler/blob/main/doc/apis.md)
+See [API Endpoints](https://github.com/heyfey/vodascheduler/blob/main/doc/apis.md) for how to configure scheduler (e.g. scheduling algorithm, rate-limit) and monitor each component of Voda scheduler through REST API.
 

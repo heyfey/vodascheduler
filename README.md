@@ -9,13 +9,14 @@ tags: voda-scheduler
 Voda scheduler is a GPU scheduler for elastic deep learning workloads based on [Kubernetes](https://github.com/kubernetes/kubernetes), [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) and [Horovod](https://github.com/horovod/horovod).
 
 
-Voda Scheduler is designed to be easily deployed in any Kubernetes cluster, for more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/doc/design/voda-scheduler-design.md).
+Voda Scheduler is designed to be easily deployed in any Kubernetes cluster. For more architectural details, see [design](https://github.com/heyfey/vodascheduler/blob/main/doc/design/voda-scheduler-design.md).
 
 ---
 
 Contents
-- [Why Elastic Training?](#Why-Elastic-Training?)
-- [Why Voda Scheduler?](#Why-Voda-Scheduler?)
+- [Why Elastic Training?](#Why-Elastic-Training)
+- [Why Voda Scheduler?](#Why-Voda-Scheduler)
+- [Demo](#Demo)
 - [Get Started](#Get-Started)
 - [Scheduling Algorithms](#Scheduling-Algorithms)
 - [Docker Images](#Docker-Images)
@@ -24,43 +25,33 @@ Contents
 
 ## Why Elastic Training?
 
-Elastic training enables the distributed training jobs to be scaled up and down dynamically at runtime, without interrupting the training process. With elastic training, the scheduler is able to have training jobs utilize idle resources if there are any, as well as make the most efficient resource allocations if the cluster is heavily-loaded, hence increasing cluster throughput and reducing overall training time.
+Elastic training enables the distributed training jobs to be scaled up and down dynamically at runtime, without interrupting the training process.
 
-For more information about elastic training, see [Elastic Horovod](https://horovod.readthedocs.io/en/stable/elastic_include.html) and [Torch Distributed Elastic](https://pytorch.org/docs/stable/distributed.elastic.html).
+With elastic training, the scheduler can make training jobs utilize idle resources if there are any and make the most efficient resource allocations if the cluster is heavily-loaded, thus increasing cluster throughput and reducing overall training time.
+
+For more information about elastic training, see [Elastic Horovod](https://horovod.readthedocs.io/en/stable/elastic_include.html), [Torch Distributed Elastic](https://pytorch.org/docs/stable/distributed.elastic.html) or [Elastic Training](https://github.com/skai-x/elastic-training).
 
 ## Why Voda Scheduler?
 
-Voda Scheduler provides several critical features for elastic deep learning workloads as follows.
+Voda Scheduler provides several critical features for elastic deep learning workloads as follows:
 
-### Rich Scheduling Algorithms (with Resource Elasticity)
+- Rich [Scheduling Algorithms](#Scheduling-Algorithms) (with resource elasticity) to choose from
+- Topology-Aware Scheduling & Worker Migration
+    -  Actively consolidate resources to maximize cluster throughput
+    -  Particularly important for elastic training since resource allocations can be dynamically adjusted
+- Node Addition/Deletion Awareness
+    - Co-works with existing autoscaler
+    - Makes the best use of spot instances that may come and go with little warning
+    - Tolerates failing nodes
+- Fault-Tolerance
 
-To fully utilize the strength of resource elasticity, Voda implements the most popular algorithms for scheduling elastic deep learning workloads.
+## Demo
 
-See the [list of algorithms provided](#Scheduling-Algorithms). The system administrators can choose any of them.
-
-You can also implement your own scheduling algorithms. Voda offers functionalities to collect run-time metrics of training jobs that could be useful for scheduling.
-
-### Topology-Aware Scheduling
-
-Job placement is critical to the performance of distributed computing jobs on GPU clusters. Voda scheduler offers **topology-aware scheduling** and **worker migration** to consolidate resources, which minimizes communication overhead and maximizes cluster throughput.
-
-### Node Autoscaling and Fault-Tolerance
-
-Voda scheduler is aware of the addition/removal of computing nodes and makes the best scheduling decision upon it, thus smoothly
-- co-works with existing autoscaler.
-- makes the best use of spot instances that may come and go with little warning.
-- tolerates failing nodes.
-
-### Fault-Tolerance of the Scheduler
-
-- Voda scheduler adopts microservice architecture. 
-    - For the training service, there is no single point of failure.
-    - For the scheduler, it restarts on failure and restores previous status.
-- No training job will be interrupted when any of the Voda scheduler components fails. 
+Checkout the [demo](https://youtu.be/M1sUd_-0LnQ) to see how resource allocations are dynamically adjusted (and how worker pods are migrated) to maximize cluster throughput
 
 ## Prerequisite
 
-A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/). Voda Scheduler is tested with v1.20.
+A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/). Voda Scheduler is tested with `v1.20`
 
 ## [Get Started](https://github.com/heyfey/vodascheduler/blob/main/doc/get-started.md)
 
@@ -96,7 +87,7 @@ A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://k
 ## Related Projects
 
 - [kubeflow/training-operator](https://github.com/kubeflow/training-operator): Training operators on Kubernetes.
-- [kubeflow/mpi-operator](https://github.com/kubeflow/mpi-operator): The MPIJob controller.
+- [kubeflow/mpi-operator](https://github.com/kubeflow/mpi-operator): Kubernetes Operator for MPI-based applications (distributed training, HPC, etc.)
 - [horovod/horovod](https://github.com/horovod/horovod): Distributed training framework for TensorFlow, Keras, PyTorch, and Apache MXNet.
 - [heyfey/munkres](https://github.com/heyfey/munkres): Hungarian algorithm used in the placement algorithm.
-- [heyfey/nvidia_smi_exporter](https://github.com/heyfey/nvidia_smi_exporter): For monitoring GPUs in the cluster. 
+- [heyfey/nvidia_smi_exporter](https://github.com/heyfey/nvidia_smi_exporter): nvidia-smi exporter for Prometheus. For monitoring GPUs in the cluster.
