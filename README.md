@@ -22,6 +22,7 @@ Contents
 - [Docker Images](#Docker-Images)
 - [Prometheus Metrics Exposed](#Prometheus-Metrics-Exposed)
 - [Related Projects](#Related-Projects)
+- [Reference](#Reference)
 
 ## Why Elastic Training?
 
@@ -91,3 +92,19 @@ A Kubernetes cluster, on-cloud or on-premise, that can [schedule GPUs](https://k
 - [horovod/horovod](https://github.com/horovod/horovod): Distributed training framework for TensorFlow, Keras, PyTorch, and Apache MXNet.
 - [heyfey/munkres](https://github.com/heyfey/munkres): Hungarian algorithm used in the placement algorithm.
 - [heyfey/nvidia_smi_exporter](https://github.com/heyfey/nvidia_smi_exporter): nvidia-smi exporter for Prometheus. For monitoring GPUs in the cluster.
+
+## Reference
+
+T. -T. Hsieh and C. -R. Lee, "Voda: A GPU Scheduling Platform for Elastic Deep Learning in Kubernetes Clusters," 2023 IEEE International Conference on Cloud Engineering (IC2E), Boston, MA, USA, 2023, pp. 131-140, doi: 10.1109/IC2E59103.2023.00023. [https://ieeexplore.ieee.org/document/10305838](https://ieeexplore.ieee.org/document/10305838)
+
+```
+@INPROCEEDINGS{10305838,
+  author={Hsieh, Tsung-Tso and Lee, Che-Rung},
+  booktitle={2023 IEEE International Conference on Cloud Engineering (IC2E)}, 
+  title={Voda: A GPU Scheduling Platform for Elastic Deep Learning in Kubernetes Clusters}, 
+  year={2023},
+  volume={},
+  number={},
+  pages={131-140},
+  doi={10.1109/IC2E59103.2023.00023}}
+```
